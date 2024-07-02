@@ -35,7 +35,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
         octave++;
     if(hw.button1.RisingEdge())
         octave--;
-    octave = DSY_CLAMP(octave, 2, 4);
+    octave = DSY_CLAMP(octave, 0, 4);
 
     // convert MIDI to frequency and multiply by octave size
     const auto freq = mtof(p_freq.Process() + (octave * 12));
