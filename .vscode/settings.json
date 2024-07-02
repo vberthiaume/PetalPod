@@ -66,7 +66,8 @@
         "new": "cpp",
         "thread": "cpp",
         "cinttypes": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "xiosbase": "cpp"
     },
     "editor.tokenColorCustomizations": {
         "textMateRules": [
