@@ -3,6 +3,7 @@
 
 #define NUM_WAVEFORMS 4
 
+//TODO: remove these and move this whole folder up into the top of the repo, or something that actually makes sense
 using namespace daisy;
 using namespace daisysp;
 
