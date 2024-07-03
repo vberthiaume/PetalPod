@@ -7,8 +7,8 @@
 import sys
 import os
 
-filter_dirs = ["libDaisy",
-               "DaisySP",
+filter_dirs = ["submodules/libDaisy",
+               "submodules/DaisySP",
                ".github",
                ".vscode",
                ".git",
@@ -16,7 +16,7 @@ filter_dirs = ["libDaisy",
                "cube",
                "dist",
                "utils",
-               "stmlib",
+               "submodules/stmlib",
                "libdaisy",
                "MyProjects"]
 

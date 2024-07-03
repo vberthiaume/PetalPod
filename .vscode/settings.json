@@ -67,7 +67,8 @@
         "thread": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp",
-        "xiosbase": "cpp"
+        "xiosbase": "cpp",
+        "usbh_conf.h": "c"
     },
     "editor.tokenColorCustomizations": {
         "textMateRules": [

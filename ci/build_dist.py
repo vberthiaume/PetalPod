@@ -79,8 +79,8 @@ def run():
     args = parser.parse_args()
 
     if not args.exclude_list:
-        filter_dirs = ["libDaisy",
-                    "DaisySP",
+        filter_dirs = ["submodules/libDaisy",
+                    "submodules/DaisySP",
                     ".github",
                     ".vscode",
                     ".git",
@@ -88,7 +88,7 @@ def run():
                     "cube",
                     "dist",
                     "utils",
-                    "stmlib",
+                    "submodules/stmlib",
                     "libdaisy",
                     "MyProjects"]
     else:
