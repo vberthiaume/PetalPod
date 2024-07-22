@@ -9,7 +9,7 @@
 using namespace daisysp;
 using namespace daisy;
 
-static DaisyPod pod;
+DaisyPod pod;
 
 bool firstLoop = true;  //first loop (sets length)
 bool rec   = false;     //currently recording
@@ -26,13 +26,9 @@ bool                res    = false;
 void ResetBuffer();
 void Controls();
 
-void NextSamples(float&                               output,
-                 AudioHandle::InterleavingInputBuffer in,
-                 size_t                               i);
+void NextSamples(float& output, AudioHandle::InterleavingInputBuffer in, size_t i);
 
-static void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
-                          AudioHandle::InterleavingOutputBuffer out,
-                          size_t                                size)
+void AudioCallback(AudioHandle::InterleavingInputBuffer  in, AudioHandle::InterleavingOutputBuffer out, size_t size)
 {
     float output = 0;
 
