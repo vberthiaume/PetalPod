@@ -161,20 +161,14 @@ int main(void)
     pod.StartAdc();
     pod.StartAudio(AudioCallback);
 
-    float fuckYou = 0.1f;
+    // float fuckYou = 0.1f;
     while(1)
     {
-        // if (fabs(drywet - drywetBuf) > .001f)
-        // {
-        //     drywetBuf = drywet;
-            
-        //     // pod.seed.PrintLine("drywetBuf = %.6f", drywetBuf);
-        // }
+        // PrintFloat ("fuckYou", fuckYou, 3);
+        // fuckYou += .1f;
 
-        // pod.seed.PrintLine ("BROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
+        PrintFloat ("fuckYou", drywet, 3);
 
-        PrintFloat ("fuckYou", fuckYou, 3);
-        fuckYou += .1f;
         System::Delay(1000);
     }
 }
