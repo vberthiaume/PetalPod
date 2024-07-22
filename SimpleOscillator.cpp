@@ -77,8 +77,7 @@ int main(void)
     while(1) {}
 }
 
-#elif 0
-
+#elif 1
 /* ========================================= LOOPER ========================================= */
 
 #include "daisysp.h"
@@ -131,15 +130,15 @@ int main(void)
 {
     // initialize pod hardware and oscillator daisysp module
     pod.Init();
+    pod.seed.StartLog (true); // true -> code will block until serial terminal connected
+    pod.seed.PrintLine ("BROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
+
     pod.SetAudioBlockSize(4);
     ResetBuffer();
 
     // start callback
     pod.StartAdc();
     pod.StartAudio(AudioCallback);
-
-    pod.seed.StartLog();
-    pod.seed.PrintLine("Hello World!");
 
     while(1) {}
 }
