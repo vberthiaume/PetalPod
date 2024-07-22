@@ -379,7 +379,9 @@ void ProfileDest(const char* class_caption)
 {
     Logger<dest>::StartLog(false);
     ProfilePrint<Logger<dest>::Print>(class_caption, "Print     ");
-    ProfilePrint<Logger<dest>::PrintLine>(class_caption, "PrintLine ");
+
+    //THIS DOESN'T WORK FOR ME
+    // ProfilePrint<Logger<dest>::PrintLine>(class_caption, "PrintLine ");
 }
 /** Verify FLT_FMT/FLT_VAR accuracy
  */
@@ -403,8 +405,7 @@ void VerifyFloats()
             result = false;
         }
     }
-    hw.PrintLine("FLT_FMT(3)/FLT_VAR(3) verification: %s",
-                 result ? "PASS" : "FAIL");
+    hw.PrintLine("FLT_FMT(3)/FLT_VAR(3) verification: %s", result ? "PASS" : "FAIL");
 }
 
 int main(void)
@@ -433,21 +434,21 @@ int main(void)
     /** Profile different destinations 
      * Don't use LOGGER_INTERNAL, since it will flood the connected terminal */
     hw.PrintLine("ProfileDest<LOGGER_EXTERNAL>");
-    // ProfileDest<LOGGER_EXTERNAL>("LOGGER_EXTERNAL");
+    ProfileDest<LOGGER_EXTERNAL>("LOGGER_EXTERNAL");
 
     hw.PrintLine("ProfileDest<LOGGER_SEMIHOST>");
-    // ProfileDest<LOGGER_SEMIHOST>("LOGGER_SEMIHOST");
+    ProfileDest<LOGGER_SEMIHOST>("LOGGER_SEMIHOST");
 
     hw.PrintLine("ProfileDest<LOGGER_NONE>");
-    // ProfileDest<LOGGER_NONE>("LOGGER_NONE    ");
+    ProfileDest<LOGGER_NONE>("LOGGER_NONE    ");
 
     /* use static method directly */
-    // Logger<LOGGER_INTERNAL>::PrintLine("This may be used anywhere too");
+    Logger<LOGGER_INTERNAL>::PrintLine("This may be used anywhere too");
 
     /** use a different output destination.
      * Note that this would require the linker to include the whole object with own buffers!
      */
-    // Logger<LOGGER_EXTERNAL>::Print("This would not be visible, but would not stop the program");
+    Logger<LOGGER_EXTERNAL>::Print("This would not be visible, but would not stop the program");
 
     hw.PrintLine("Verifying newline character handling:");
     hw.PrintLine("1. This should be a single line\r");
@@ -505,15 +506,9 @@ int main(void)
         //showcase floating point output. note that FLT_FMT is part of the format string
         hw.PrintLine("%6u: Elapsed time: " FLT_FMT3 " seconds", counter, FLT_VAR3(time_s));
 
-#if 1
         /* LSB triggers the LED */
         hw.SetLed(counter & 0x01);
         counter++;
-#else
-        // Set the onboard LED
-        hw.SetLed(led_state);
-        led_state = ! led_state;    // Toggle the LED state for the next time around.
-#endif        
     }
 
     return 0;
