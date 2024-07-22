@@ -43,23 +43,6 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in, AudioHandle::Interl
     }
 }
 
-int main(void)
-{
-    // initialize pod hardware and oscillator daisysp module
-    pod.Init();
-    pod.seed.StartLog (true); // true -> code will block until serial terminal connected
-    pod.seed.PrintLine ("BROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
-
-    pod.SetAudioBlockSize(4);
-    ResetBuffer();
-
-    // start callback
-    pod.StartAdc();
-    pod.StartAudio(AudioCallback);
-
-    while(1) {}
-}
-
 void ResetBuffer()
 {
     play  = false;
@@ -114,11 +97,6 @@ void Controls()
     pod.ProcessDigitalControls();
 
     drywet = pod.knob1.Process();
-    if(drywetBuf != drywet)
-    {
-        drywetBuf = drywet;
-        // std::cout << drywetBuf << "\n";
-    }
 
     UpdateButtons();
 
@@ -161,6 +139,46 @@ void NextSamples (float& output, AudioHandle::InterleavingInputBuffer in, size_t
     if (! rec)
         output = output * drywet + in[i] * (1 - drywet);
 }
+
+void PrintFloat (const char* text, float value, int decimalPlaces)
+{
+    int wholeValue { static_cast<int> (value) };
+    int fractionalValue { static_cast<int> (static_cast<float> (std::pow (10, decimalPlaces)) * (value - static_cast<float> (wholeValue))) };
+    pod.seed.PrintLine ("%s: %d.%d", text, wholeValue, fractionalValue);
+}
+
+int main(void)
+{
+    // initialize pod hardware and oscillator daisysp module
+    pod.Init();
+    pod.seed.StartLog (); // true -> code will block until serial terminal connected
+    // pod.seed.PrintLine ("BROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
+
+    pod.SetAudioBlockSize(4);
+    ResetBuffer();
+
+    // start callback
+    pod.StartAdc();
+    pod.StartAudio(AudioCallback);
+
+    float fuckYou = 0.1f;
+    while(1)
+    {
+        // if (fabs(drywet - drywetBuf) > .001f)
+        // {
+        //     drywetBuf = drywet;
+            
+        //     // pod.seed.PrintLine("drywetBuf = %.6f", drywetBuf);
+        // }
+
+        // pod.seed.PrintLine ("BROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
+
+        PrintFloat ("fuckYou", fuckYou, 3);
+        fuckYou += .1f;
+        System::Delay(1000);
+    }
+}
+
 #elif 0
 /* ========================================= SIMPLE OSCILLATOR ========================================= */
 
@@ -395,8 +413,7 @@ void VerifyFloats()
         if(abs((double)f - f_tst) > 1.0e-3)
         {
             sprintf(ref, "%.3f", f);
-            hw.PrintLine(
-                "mismatch: ref = %s, dsy = %s, float = %.6f", ref, tst, f);
+            hw.PrintLine("mismatch: ref = %s, dsy = %s, float = %.6f", ref, tst, f);
             result = false;
         }
     }
