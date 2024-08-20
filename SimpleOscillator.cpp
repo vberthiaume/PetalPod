@@ -130,28 +130,27 @@ void UpdateButtons()
             len = 0;
         }
 
-        res  = true;
-        isCurrentlyPlaying = true;
-        isCurrentlyRecording  = ! isCurrentlyRecording;   //first time button 2 is pressed, rec is false, so this makes it true
+        res                  = true;
+        isCurrentlyPlaying   = true;
+        isCurrentlyRecording = ! isCurrentlyRecording;
     }
 
     //button2 held
-    if(pod.button2.TimeHeldMs() >= 1000 && res)
+    if (pod.button2.TimeHeldMs() >= 1000 && res)
     {
         ResetState();
         res = false;
     }
 
     //button1 pressed and not empty buffer
-    if (pod.button1.RisingEdge() && ! (! isCurrentlyRecording && isFirstLoop))
+    if (pod.button1.RisingEdge() && (isCurrentlyRecording || ! isFirstLoop))
     {
-        isCurrentlyPlaying = ! isCurrentlyPlaying;
-        isCurrentlyRecording  = false;
+        isCurrentlyPlaying   = ! isCurrentlyPlaying;
+        isCurrentlyRecording = false;
     }
 }
 
-//Deals with analog controls
-void Controls()
+void ProcessControls()
 {
     pod.ProcessAnalogControls();
     pod.ProcessDigitalControls();
@@ -161,24 +160,24 @@ void Controls()
     UpdateButtons();
 
     //leds
-    pod.led1.Set(0, isCurrentlyPlaying == true, 0);
-    pod.led2.Set(isCurrentlyRecording == true, 0, 0);
+    pod.led1.Set (0, isCurrentlyPlaying == true, 0);
+    pod.led2.Set (isCurrentlyRecording == true, 0, 0);
 
     pod.UpdateLeds();
 }
 
-void WriteBuffer(AudioHandle::InterleavingInputBuffer in, size_t i)
+void RecordIntoBuffer(AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     buf[pos] = buf[pos] * 0.5 + in[i] * 0.5;
 
-    if (isFirstLoop)
+    if(isFirstLoop)
         len++;
 }
 
 float NextSamples (AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     if (isCurrentlyRecording)
-        WriteBuffer(in, i);
+        RecordIntoBuffer(in, i);
 
     float output = buf[pos];
 
@@ -197,7 +196,7 @@ float NextSamples (AudioHandle::InterleavingInputBuffer in, size_t i)
     }
 
     if (! isCurrentlyRecording)
-        output = output * drywet + in[i] * (1 - drywet);
+        output = output * drywet + in[i] * (.968f - drywet);    //slider apparently only goes to .968f lol
 
     return output;
 }
@@ -206,14 +205,14 @@ void AudioCallback (AudioHandle::InterleavingInputBuffer inputBuffer,
                     AudioHandle::InterleavingOutputBuffer outputBuffer,
                     size_t numSamples)
 {
-    Controls();
+    ProcessControls();
 
-    for(size_t i = 0; i < numSamples; i += 2)
+    for(size_t curSample = 0; curSample < numSamples; curSample += 2)
     {
-        float output = NextSamples (inputBuffer, i);
+        float output = NextSamples (inputBuffer, curSample);
 
         // left and right outs
-        outputBuffer[i] = outputBuffer[i + 1] = output;
+        outputBuffer[curSample] = outputBuffer[curSample + 1] = output;
     }
 }
 
