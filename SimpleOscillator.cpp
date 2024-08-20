@@ -82,33 +82,34 @@ int main(void)
 #include "daisysp.h"
 #include "daisy_pod.h"
 
-#define MAX_SIZE (48000 * 60 * 5) // 5 minutes of floats at 48 khz
+#define MAX_SIZE (48000 * 60 * 5)   // 5 minutes of floats at 48 khz
 
 using namespace daisysp;
 using namespace daisy;
 
 DaisyPod pod;
 
-bool firstLoop = true;  //first loop (sets length)
-bool rec       = false; //currently recording
-bool play      = false; //currently playing
+bool isFirstLoop          = true;   //the first loop will set the length for the buffer
+bool isCurrentlyRecording = false;
+bool isCurrentlyPlaying   = false;
 
 int                 pos = 0;
-float DSY_SDRAM_BSS buf[MAX_SIZE];
+float DSY_SDRAM_BSS buf[MAX_SIZE];  //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
 int                 mod       = MAX_SIZE;
 int                 len       = 0;
+
 float               drywet    = 0;
 float               drywetBuf = 0;
 bool                res       = false;
-bool                led_state{true};
+bool                led_state = true;
 
 void ResetState()
 {
-    play  = false;
-    rec   = false;
-    firstLoop = true;
-    pos   = 0;
-    len   = 0;
+    isCurrentlyPlaying   = false;
+    isCurrentlyRecording = false;
+    isFirstLoop          = true;
+    pos                  = 0;
+    len                  = 0;
 
     for(int i = 0; i < mod; i++)
         buf[i] = 0;
@@ -121,17 +122,17 @@ void UpdateButtons()
     //button2 pressed
     if (pod.button2.RisingEdge())
     {
-        if (firstLoop && rec)   //we were recording the first loop and now it stopped
+        if (isFirstLoop && isCurrentlyRecording)   //we were recording the first loop and now it stopped
         {
             //so set the loop length
-            firstLoop = false;
+            isFirstLoop = false;
             mod = len;
             len = 0;
         }
 
         res  = true;
-        play = true;
-        rec  = ! rec;   //first time button 2 is pressed, rec is false, so this makes it true
+        isCurrentlyPlaying = true;
+        isCurrentlyRecording  = ! isCurrentlyRecording;   //first time button 2 is pressed, rec is false, so this makes it true
     }
 
     //button2 held
@@ -142,10 +143,10 @@ void UpdateButtons()
     }
 
     //button1 pressed and not empty buffer
-    if (pod.button1.RisingEdge() && !(!rec && firstLoop))
+    if (pod.button1.RisingEdge() && ! (! isCurrentlyRecording && isFirstLoop))
     {
-        play = ! play;
-        rec  = false;
+        isCurrentlyPlaying = ! isCurrentlyPlaying;
+        isCurrentlyRecording  = false;
     }
 }
 
@@ -160,8 +161,8 @@ void Controls()
     UpdateButtons();
 
     //leds
-    pod.led1.Set(0, play == true, 0);
-    pod.led2.Set(rec == true, 0, 0);
+    pod.led1.Set(0, isCurrentlyPlaying == true, 0);
+    pod.led2.Set(isCurrentlyRecording == true, 0, 0);
 
     pod.UpdateLeds();
 }
@@ -170,13 +171,13 @@ void WriteBuffer(AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     buf[pos] = buf[pos] * 0.5 + in[i] * 0.5;
 
-    if (firstLoop)
+    if (isFirstLoop)
         len++;
 }
 
 void NextSamples (float& output, AudioHandle::InterleavingInputBuffer in, size_t i)
 {
-    if (rec)
+    if (isCurrentlyRecording)
         WriteBuffer(in, i);
 
     output = buf[pos];
@@ -184,18 +185,18 @@ void NextSamples (float& output, AudioHandle::InterleavingInputBuffer in, size_t
     //automatic looptime
     if(len >= MAX_SIZE)
     {
-        firstLoop = false;
+        isFirstLoop = false;
         mod   = MAX_SIZE;
         len   = 0;
     }
 
-    if (play)
+    if (isCurrentlyPlaying)
     {
         pos++;
         pos %= mod;
     }
 
-    if (! rec)
+    if (! isCurrentlyRecording)
         output = output * drywet + in[i] * (1 - drywet);
 }
 
