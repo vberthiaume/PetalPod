@@ -175,12 +175,12 @@ void WriteBuffer(AudioHandle::InterleavingInputBuffer in, size_t i)
         len++;
 }
 
-void NextSamples (float& output, AudioHandle::InterleavingInputBuffer in, size_t i)
+float NextSamples (AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     if (isCurrentlyRecording)
         WriteBuffer(in, i);
 
-    output = buf[pos];
+    float output = buf[pos];
 
     //automatic looptime
     if(len >= MAX_SIZE)
@@ -198,20 +198,22 @@ void NextSamples (float& output, AudioHandle::InterleavingInputBuffer in, size_t
 
     if (! isCurrentlyRecording)
         output = output * drywet + in[i] * (1 - drywet);
+
+    return output;
 }
 
-void AudioCallback(AudioHandle::InterleavingInputBuffer  in, AudioHandle::InterleavingOutputBuffer out, size_t size)
+void AudioCallback (AudioHandle::InterleavingInputBuffer inputBuffer,
+                    AudioHandle::InterleavingOutputBuffer outputBuffer,
+                    size_t numSamples)
 {
-    float output = 0.f;
-
     Controls();
 
-    for(size_t i = 0; i < size; i += 2)
+    for(size_t i = 0; i < numSamples; i += 2)
     {
-        NextSamples(output, in, i);
+        float output = NextSamples (inputBuffer, i);
 
         // left and right outs
-        out[i] = out[i + 1] = output;
+        outputBuffer[i] = outputBuffer[i + 1] = output;
     }
 }
 
