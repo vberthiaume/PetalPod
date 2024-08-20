@@ -90,16 +90,17 @@ using namespace daisy;
 DaisyPod pod;
 
 bool firstLoop = true;  //first loop (sets length)
-bool rec   = false;     //currently recording
-bool play  = false;     //currently playing
+bool rec       = false; //currently recording
+bool play      = false; //currently playing
 
 int                 pos = 0;
 float DSY_SDRAM_BSS buf[MAX_SIZE];
-int                 mod    = MAX_SIZE;
-int                 len    = 0;
-float               drywet = 0;
+int                 mod       = MAX_SIZE;
+int                 len       = 0;
+float               drywet    = 0;
 float               drywetBuf = 0;
-bool                res    = false;
+bool                res       = false;
+bool                led_state{true};
 
 void ResetState()
 {
@@ -115,25 +116,6 @@ void ResetState()
     mod = MAX_SIZE;
 }
 
-void Controls();
-
-void NextSamples(float& output, AudioHandle::InterleavingInputBuffer in, size_t i);
-
-void AudioCallback(AudioHandle::InterleavingInputBuffer  in, AudioHandle::InterleavingOutputBuffer out, size_t size)
-{
-    float output = 0;
-
-    Controls();
-
-    for(size_t i = 0; i < size; i += 2)
-    {
-        NextSamples(output, in, i);
-
-        // left and right outs
-        out[i] = out[i + 1] = output;
-    }
-}
-
 void UpdateButtons()
 {
     //button2 pressed
@@ -143,8 +125,8 @@ void UpdateButtons()
         {
             //so set the loop length
             firstLoop = false;
-            mod   = len;
-            len   = 0;
+            mod = len;
+            len = 0;
         }
 
         res  = true;
@@ -217,6 +199,21 @@ void NextSamples (float& output, AudioHandle::InterleavingInputBuffer in, size_t
         output = output * drywet + in[i] * (1 - drywet);
 }
 
+void AudioCallback(AudioHandle::InterleavingInputBuffer  in, AudioHandle::InterleavingOutputBuffer out, size_t size)
+{
+    float output = 0.f;
+
+    Controls();
+
+    for(size_t i = 0; i < size; i += 2)
+    {
+        NextSamples(output, in, i);
+
+        // left and right outs
+        out[i] = out[i + 1] = output;
+    }
+}
+
 void PrintFloat (const char* text, float value, int decimalPlaces)
 {
     const auto wholeValue { static_cast<int> (value) };
@@ -234,11 +231,10 @@ int main(void)
     pod.SetAudioBlockSize(4);
 
     ResetState();
-    bool led_state { true };
 
-    // start callback
+    // start audio
     pod.StartAdc();
-    pod.StartAudio(AudioCallback);
+    pod.StartAudio (AudioCallback);
 
     while(1)
     {
