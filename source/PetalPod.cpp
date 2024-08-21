@@ -282,13 +282,8 @@ bool isCurrentlyPlaying   = false;
 
 float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
 int                 positionInLooperBuffer = 0;
-int                 mod = maxRecordingSize;
+int                 cappedRecordingSize = maxRecordingSize;
 int                 numRecordedSamples = 0;
-
-float drywet    = 0;
-float drywetBuf = 0;
-// bool  res       = false;
-bool  led_state = true;
 
 //effect things
 daisysp::ReverbSc                                     reverbSC;
@@ -300,7 +295,7 @@ int                                                   curFxMode = fxMode::reverb
 
 float currentDelay, feedback, delayTarget, cutoff;
 int   crushmod, crushcount;
-float crushsl, crushsr /*, drywet*/;
+float crushsl, crushsr, drywet;
 
 void ResetLooperState()
 {
@@ -310,10 +305,10 @@ void ResetLooperState()
     positionInLooperBuffer                  = 0;
     numRecordedSamples                  = 0;
 
-    for (int i = 0; i < mod; i++)
+    for (int i = 0; i < cappedRecordingSize; i++)
         looperBuffer[i] = 0;
 
-    mod = maxRecordingSize;
+    cappedRecordingSize = maxRecordingSize;
 }
 
 void GetReverbSample (float &outl, float &outr, float inl, float inr)
@@ -368,7 +363,7 @@ void UpdateButtons()
         {
             //so set the loop length
             isFirstLoop = false;
-            mod         = numRecordedSamples;
+            cappedRecordingSize         = numRecordedSamples;
             numRecordedSamples         = 0;
         }
 
@@ -495,15 +490,15 @@ float GetSampleFromLooper (daisy::AudioHandle::InterleavingInputBuffer in, size_
     //truncate loop because we went over our max recording size
     if (numRecordedSamples >= maxRecordingSize)
     {
-        isFirstLoop = false;
-        mod         = maxRecordingSize;
-        numRecordedSamples         = 0;
+        isFirstLoop         = false;
+        cappedRecordingSize = maxRecordingSize;
+        numRecordedSamples  = 0;
     }
 
     if (isCurrentlyPlaying)
     {
         positionInLooperBuffer++;
-        positionInLooperBuffer %= mod;
+        positionInLooperBuffer %= cappedRecordingSize;
     }
 
     //this was to use knob 1 as a dry/wet for the in/out for the looper. Keeping in case it's useful later
@@ -584,13 +579,14 @@ int main (void)
     pod.StartAdc();
     pod.StartAudio (AudioCallback);
 
+    bool led_state = true;
     while (1)
     {
         // blink the led
         pod.seed.SetLed (led_state);
         led_state = !led_state;
 
-        PrintFloat ("dry wet", drywet, 3);
+        // PrintFloat ("dry wet", drywet, 3);
 
         daisy::System::Delay (1000);
     }
