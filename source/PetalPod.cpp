@@ -414,8 +414,8 @@ void UpdateEncoder()
 
 void UpdateLeds(float k1, float k2)
 {
-    pod.led1.Set(k1 * (curFxMode == 2), k1 * (curFxMode == 1), k1 * (curFxMode == 0 || curFxMode == 2));
-    pod.led2.Set(k2 * (curFxMode == 2), k2 * (curFxMode == 1), k2 * (curFxMode == 0 || curFxMode == 2));
+    pod.led1.Set (k1 * (curFxMode == 2), k1 * (curFxMode == 1), k1 * (curFxMode == 0 || curFxMode == 2));
+    pod.led2.Set (k2 * (curFxMode == 2), k2 * (curFxMode == 1), k2 * (curFxMode == 0 || curFxMode == 2));
 
     pod.UpdateLeds();
 }
