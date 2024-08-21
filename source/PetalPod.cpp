@@ -280,14 +280,14 @@ bool isFirstLoop          = true; //the first loop will set the length for the b
 bool isCurrentlyRecording = false;
 bool isCurrentlyPlaying   = false;
 
-float DSY_SDRAM_BSS buf[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
-int                 pos = 0;
+float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
+int                 positionInLooperBuffer = 0;
 int                 mod = maxRecordingSize;
-int                 len = 0;
+int                 numRecordedSamples = 0;
 
 float drywet    = 0;
 float drywetBuf = 0;
-bool  res       = false;
+// bool  res       = false;
 bool  led_state = true;
 
 //effect things
@@ -307,11 +307,11 @@ void ResetLooperState()
     isCurrentlyPlaying   = false;
     isCurrentlyRecording = false;
     isFirstLoop          = true;
-    pos                  = 0;
-    len                  = 0;
+    positionInLooperBuffer                  = 0;
+    numRecordedSamples                  = 0;
 
     for (int i = 0; i < mod; i++)
-        buf[i] = 0;
+        looperBuffer[i] = 0;
 
     mod = maxRecordingSize;
 }
@@ -351,6 +351,31 @@ void GetCrushSample (float &outl, float &outr, float inl, float inr)
     outr = tone.Process (crushsr);
 }
 
+#if 1
+void UpdateButtons()
+{
+    //button 1 just started to be held button
+    if (pod.button1.RisingEdge())
+    {
+        isCurrentlyPlaying   = true;
+        isCurrentlyRecording = true;
+    }
+
+    //button 1 was just released
+    if (pod.button1.FallingEdge())
+    {
+        if (isFirstLoop && isCurrentlyRecording) //we were recording the first loop and now it stopped
+        {
+            //so set the loop length
+            isFirstLoop = false;
+            mod         = numRecordedSamples;
+            numRecordedSamples         = 0;
+        }
+
+        isCurrentlyRecording = false;
+    }
+}
+#else
 void UpdateButtons()
 {
     //button2 pressed
@@ -383,6 +408,7 @@ void UpdateButtons()
         isCurrentlyRecording = false;
     }
 }
+#endif
 
 void UpdateEffectKnobs (float &k1, float &k2)
 {
@@ -414,7 +440,15 @@ void UpdateEncoder()
 
 void UpdateLeds(float k1, float k2)
 {
-    pod.led1.Set (k1 * (curFxMode == 2), k1 * (curFxMode == 1), k1 * (curFxMode == 0 || curFxMode == 2));
+    //led1 is red when recording, green when playing, off otherwise
+    daisy::Color led1Color;
+    if (isCurrentlyRecording)
+        led1Color.Init (daisy::Color::RED);
+    else if (isCurrentlyPlaying)
+        led1Color.Init (daisy::Color::GREEN);
+    pod.led1.SetColor (led1Color);
+
+    //led 2 reflects the effect parameter
     pod.led2.Set (k2 * (curFxMode == 2), k2 * (curFxMode == 1), k2 * (curFxMode == 0 || curFxMode == 2));
 
     pod.UpdateLeds();
@@ -436,47 +470,47 @@ void ProcessControls()
 
     UpdateEncoder();
 
-    //leds
-    pod.led1.Set (0, isCurrentlyPlaying == true, 0);
-    pod.led2.Set (isCurrentlyRecording == true, 0, 0);
-
-    pod.UpdateLeds();
-    UpdateLeds(k1, k2);
+    UpdateLeds (k1, k2);
 }
 
 void RecordIntoBuffer (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 {
-    buf[pos] = buf[pos] * 0.5 + in[i] * 0.5;
+    looperBuffer[positionInLooperBuffer] = looperBuffer[positionInLooperBuffer] * 0.5 + in[i] * 0.5;
 
     if (isFirstLoop)
-        len++;
+        numRecordedSamples++;
 }
 
 float GetSampleFromLooper (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 {
+    //this should basically only happen when we start and we don't have anything recorded
+    if (! isCurrentlyRecording && ! isCurrentlyPlaying)
+        return in[i];
+
     if (isCurrentlyRecording)
         RecordIntoBuffer (in, i);
 
-    float output = buf[pos];
+    float outputSample = looperBuffer[positionInLooperBuffer];
 
-    //automatic looptime
-    if (len >= maxRecordingSize)
+    //truncate loop because we went over our max recording size
+    if (numRecordedSamples >= maxRecordingSize)
     {
         isFirstLoop = false;
         mod         = maxRecordingSize;
-        len         = 0;
+        numRecordedSamples         = 0;
     }
 
     if (isCurrentlyPlaying)
     {
-        pos++;
-        pos %= mod;
+        positionInLooperBuffer++;
+        positionInLooperBuffer %= mod;
     }
 
-    if (! isCurrentlyRecording)
-        output = output * drywet + in[i] * (.968f - drywet); //slider apparently only goes to .968f lol
+    //this was to use knob 1 as a dry/wet for the in/out for the looper. Keeping in case it's useful later
+    // if (! isCurrentlyRecording)
+    //     outputSample = outputSample * drywet + in[i] * (.968f - drywet); //slider apparently only goes to .968f lol
 
-    return output;
+    return outputSample;
 }
 
 void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
