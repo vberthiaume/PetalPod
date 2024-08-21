@@ -266,9 +266,13 @@ int main(void)
 
 constexpr int maxRecordingSize { 48000 * 60 * 5 };                   // 5 minutes of floats at 48 khz
 constexpr size_t maxDelayTime { static_cast<size_t>(48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
-#define REV 0
-#define DEL 1
-#define CRU 2
+
+enum effectMode
+{
+    reverb = 0,
+    delay,
+    crush,
+};
 
 using namespace daisysp;
 using namespace daisy;
@@ -291,12 +295,12 @@ bool                res       = false;
 bool                led_state = true;
 
 //effect things
-static ReverbSc                                  rev;
+static daisysp::ReverbSc                                  rev;
 static DelayLine<float, maxDelayTime> DSY_SDRAM_BSS dell;
 static DelayLine<float, maxDelayTime> DSY_SDRAM_BSS delr;
 static Tone                                      tone;
 static daisy::Parameter                          deltime, cutoffParam, crushrate;
-int                                              mode = REV;
+int                                              mode = reverb;
 
 float currentDelay, feedback, delayTarget, cutoff;
 
@@ -392,15 +396,15 @@ void UpdateEffectKnobs(float &k1, float &k2)
 
     switch(mode)
     {
-        case REV:
+        case reverb:
             drywet = k1;
             rev.SetFeedback(k2);
             break;
-        case DEL:
+        case delay:
             delayTarget = deltime.Process();
             feedback    = k2;
             break;
-        case CRU:
+        case crush:
             cutoff = cutoffParam.Process();
             tone.SetFreq(cutoff);
             crushmod = (int)crushrate.Process();
@@ -492,9 +496,9 @@ void AudioCallback (AudioHandle::InterleavingInputBuffer inputBuffer,
 
         switch(mode)
         {
-            case REV: GetReverbSample (outl, outr, inl, inr); break;
-            case DEL: GetDelaySample (outl, outr, inl, inr); break;
-            case CRU: GetCrushSample (outl, outr, inl, inr); break;
+            case reverb: GetReverbSample (outl, outr, inl, inr); break;
+            case delay: GetDelaySample (outl, outr, inl, inr); break;
+            case crush: GetCrushSample (outl, outr, inl, inr); break;
             default: outl = outr = 0;
         }
 
