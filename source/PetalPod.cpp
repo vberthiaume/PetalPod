@@ -267,7 +267,7 @@ int main(void)
 constexpr int maxRecordingSize { 48000 * 60 * 5 };                   // 5 minutes of floats at 48 khz
 constexpr size_t maxDelayTime { static_cast<size_t>(48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
 
-enum effectMode
+enum fxMode
 {
     reverb = 0,
     delay,
@@ -295,12 +295,12 @@ bool                res       = false;
 bool                led_state = true;
 
 //effect things
-static daisysp::ReverbSc                                  rev;
-static DelayLine<float, maxDelayTime> DSY_SDRAM_BSS dell;
-static DelayLine<float, maxDelayTime> DSY_SDRAM_BSS delr;
-static Tone                                      tone;
-static daisy::Parameter                          deltime, cutoffParam, crushrate;
-int                                              mode = reverb;
+daisysp::ReverbSc                            rev;
+DelayLine<float, maxDelayTime> DSY_SDRAM_BSS dell;
+DelayLine<float, maxDelayTime> DSY_SDRAM_BSS delr;
+daisysp::Tone                                         tone;
+daisy::Parameter                             deltime, cutoffParam, crushrate;
+int                                                 mode = fxMode::reverb;
 
 float currentDelay, feedback, delayTarget, cutoff;
 
@@ -396,15 +396,15 @@ void UpdateEffectKnobs(float &k1, float &k2)
 
     switch(mode)
     {
-        case reverb:
+        case fxMode::reverb:
             drywet = k1;
             rev.SetFeedback(k2);
             break;
-        case delay:
+        case fxMode::delay:
             delayTarget = deltime.Process();
             feedback    = k2;
             break;
-        case crush:
+        case fxMode::crush:
             cutoff = cutoffParam.Process();
             tone.SetFreq(cutoff);
             crushmod = (int)crushrate.Process();
@@ -496,9 +496,9 @@ void AudioCallback (AudioHandle::InterleavingInputBuffer inputBuffer,
 
         switch(mode)
         {
-            case reverb: GetReverbSample (outl, outr, inl, inr); break;
-            case delay: GetDelaySample (outl, outr, inl, inr); break;
-            case crush: GetCrushSample (outl, outr, inl, inr); break;
+            case fxMode::reverb: GetReverbSample (outl, outr, inl, inr); break;
+            case fxMode::delay: GetDelaySample (outl, outr, inl, inr); break;
+            case fxMode::crush: GetCrushSample (outl, outr, inl, inr); break;
             default: outl = outr = 0;
         }
 
