@@ -272,6 +272,7 @@ enum fxMode
     reverb = 0,
     delay,
     crush,
+    total
 };
 
 daisy::DaisyPod pod;
@@ -411,7 +412,7 @@ void UpdateEffectKnobs(float &k1, float &k2)
 void UpdateEncoder()
 {
     curFxMode = curFxMode + pod.encoder.Increment();
-    curFxMode = (curFxMode % 3 + 3) % 3;
+    curFxMode = (curFxMode % fxMode::total + fxMode::total) % fxMode::total;
 }
 
 void ProcessControls()
