@@ -78,7 +78,6 @@ int main(void)
 }
 
 #elif 0
-
 #include "daisysp.h"
 #include "daisy_pod.h"
 
@@ -87,7 +86,6 @@ int main(void)
 #define REV 0
 #define DEL 1
 #define CRU 2
-
 
 using namespace daisysp;
 using namespace daisy;
@@ -264,8 +262,10 @@ int main(void)
 #include "daisysp.h"
 #include "daisy_pod.h"
 
-constexpr int maxRecordingSize { 48000 * 60 * 5 };                   // 5 minutes of floats at 48 khz
-constexpr size_t maxDelayTime { static_cast<size_t>(48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
+daisy::DaisyPod pod;
+
+constexpr int    maxRecordingSize{48000 * 60 * 5};                 // 5 minutes of floats at 48 khz
+constexpr size_t maxDelayTime{static_cast<size_t> (48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
 
 enum fxMode
 {
@@ -275,35 +275,32 @@ enum fxMode
     total
 };
 
-daisy::DaisyPod pod;
-
 //looper things
-bool isFirstLoop          = true;   //the first loop will set the length for the buffer
+bool isFirstLoop          = true; //the first loop will set the length for the buffer
 bool isCurrentlyRecording = false;
 bool isCurrentlyPlaying   = false;
 
+float DSY_SDRAM_BSS buf[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
 int                 pos = 0;
-float DSY_SDRAM_BSS buf[maxRecordingSize];  //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
-int                 mod       = maxRecordingSize;
-int                 len       = 0;
+int                 mod = maxRecordingSize;
+int                 len = 0;
 
-float               drywet    = 0;
-float               drywetBuf = 0;
-bool                res       = false;
-bool                led_state = true;
+float drywet    = 0;
+float drywetBuf = 0;
+bool  res       = false;
+bool  led_state = true;
 
 //effect things
-daisysp::ReverbSc                                     rev;
-daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS dell;
-daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS delr;
+daisysp::ReverbSc                                     reverbSC;
+daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS leftDelay;
+daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS rightDelay;
 daisysp::Tone                                         tone;
 daisy::Parameter                                      deltime, cutoffParam, crushrate;
 int                                                   curFxMode = fxMode::reverb;
 
 float currentDelay, feedback, delayTarget, cutoff;
-
 int   crushmod, crushcount;
-float crushsl, crushsr/*, drywet*/;
+float crushsl, crushsr /*, drywet*/;
 
 void ResetLooperState()
 {
@@ -313,45 +310,45 @@ void ResetLooperState()
     pos                  = 0;
     len                  = 0;
 
-    for(int i = 0; i < mod; i++)
+    for (int i = 0; i < mod; i++)
         buf[i] = 0;
 
     mod = maxRecordingSize;
 }
 
-void GetReverbSample(float &outl, float &outr, float inl, float inr)
+void GetReverbSample (float &outl, float &outr, float inl, float inr)
 {
-    rev.Process(inl, inr, &outl, &outr);
+    reverbSC.Process (inl, inr, &outl, &outr);
     outl = drywet * outl + (1 - drywet) * inl;
     outr = drywet * outr + (1 - drywet) * inr;
 }
 
-void GetDelaySample(float &outl, float &outr, float inl, float inr)
+void GetDelaySample (float &outl, float &outr, float inl, float inr)
 {
-    daisysp::fonepole(currentDelay, delayTarget, .00007f);
-    delr.SetDelay(currentDelay);
-    dell.SetDelay(currentDelay);
-    outl = dell.Read();
-    outr = delr.Read();
+    daisysp::fonepole (currentDelay, delayTarget, .00007f);
+    rightDelay.SetDelay (currentDelay);
+    leftDelay.SetDelay (currentDelay);
+    outl = leftDelay.Read();
+    outr = rightDelay.Read();
 
-    dell.Write((feedback * outl) + inl);
+    leftDelay.Write ((feedback * outl) + inl);
     outl = (feedback * outl) + ((1.0f - feedback) * inl);
 
-    delr.Write((feedback * outr) + inr);
+    rightDelay.Write ((feedback * outr) + inr);
     outr = (feedback * outr) + ((1.0f - feedback) * inr);
 }
 
-void GetCrushSample(float &outl, float &outr, float inl, float inr)
+void GetCrushSample (float &outl, float &outr, float inl, float inr)
 {
     crushcount++;
     crushcount %= crushmod;
-    if(crushcount == 0)
+    if (crushcount == 0)
     {
         crushsr = inr;
         crushsl = inl;
     }
-    outl = tone.Process(crushsl);
-    outr = tone.Process(crushsr);
+    outl = tone.Process (crushsl);
+    outr = tone.Process (crushsr);
 }
 
 void UpdateButtons()
@@ -359,17 +356,17 @@ void UpdateButtons()
     //button2 pressed
     if (pod.button2.RisingEdge())
     {
-        if (isFirstLoop && isCurrentlyRecording)   //we were recording the first loop and now it stopped
+        if (isFirstLoop && isCurrentlyRecording) //we were recording the first loop and now it stopped
         {
             //so set the loop length
             isFirstLoop = false;
-            mod = len;
-            len = 0;
+            mod         = len;
+            len         = 0;
         }
 
         res                  = true;
         isCurrentlyPlaying   = true;
-        isCurrentlyRecording = ! isCurrentlyRecording;
+        isCurrentlyRecording = !isCurrentlyRecording;
     }
 
     //button2 held
@@ -380,14 +377,14 @@ void UpdateButtons()
     }
 
     //button1 pressed and not empty buffer
-    if (pod.button1.RisingEdge() && (isCurrentlyRecording || ! isFirstLoop))
+    if (pod.button1.RisingEdge() && (isCurrentlyRecording || !isFirstLoop))
     {
-        isCurrentlyPlaying   = ! isCurrentlyPlaying;
+        isCurrentlyPlaying   = !isCurrentlyPlaying;
         isCurrentlyRecording = false;
     }
 }
 
-void UpdateEffectKnobs(float &k1, float &k2)
+void UpdateEffectKnobs (float &k1, float &k2)
 {
     k1 = pod.knob1.Process();
     k2 = pod.knob2.Process();
@@ -396,7 +393,7 @@ void UpdateEffectKnobs(float &k1, float &k2)
     {
         case fxMode::reverb:
             drywet = k1;
-            rev.SetFeedback(k2);
+            reverbSC.SetFeedback (k2);
             break;
         case fxMode::delay:
             delayTarget = deltime.Process();
@@ -404,8 +401,8 @@ void UpdateEffectKnobs(float &k1, float &k2)
             break;
         case fxMode::crush:
             cutoff = cutoffParam.Process();
-            tone.SetFreq(cutoff);
-            crushmod = (int)crushrate.Process();
+            tone.SetFreq (cutoff);
+            crushmod = (int) crushrate.Process();
     }
 }
 
@@ -413,6 +410,14 @@ void UpdateEncoder()
 {
     curFxMode = curFxMode + pod.encoder.Increment();
     curFxMode = (curFxMode % fxMode::total + fxMode::total) % fxMode::total;
+}
+
+void UpdateLeds(float k1, float k2)
+{
+    pod.led1.Set(k1 * (curFxMode == 2), k1 * (curFxMode == 1), k1 * (curFxMode == 0 || curFxMode == 2));
+    pod.led2.Set(k2 * (curFxMode == 2), k2 * (curFxMode == 1), k2 * (curFxMode == 0 || curFxMode == 2));
+
+    pod.UpdateLeds();
 }
 
 void ProcessControls()
@@ -427,7 +432,7 @@ void ProcessControls()
 
     UpdateButtons();
 
-    UpdateEffectKnobs(k1, k2);
+    UpdateEffectKnobs (k1, k2);
 
     UpdateEncoder();
 
@@ -436,29 +441,30 @@ void ProcessControls()
     pod.led2.Set (isCurrentlyRecording == true, 0, 0);
 
     pod.UpdateLeds();
+    UpdateLeds(k1, k2);
 }
 
-void RecordIntoBuffer(daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
+void RecordIntoBuffer (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     buf[pos] = buf[pos] * 0.5 + in[i] * 0.5;
 
-    if(isFirstLoop)
+    if (isFirstLoop)
         len++;
 }
 
-float NextSamples (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
+float GetSampleFromLooper (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     if (isCurrentlyRecording)
-        RecordIntoBuffer(in, i);
+        RecordIntoBuffer (in, i);
 
     float output = buf[pos];
 
     //automatic looptime
-    if(len >= maxRecordingSize)
+    if (len >= maxRecordingSize)
     {
         isFirstLoop = false;
-        mod   = maxRecordingSize;
-        len   = 0;
+        mod         = maxRecordingSize;
+        len         = 0;
     }
 
     if (isCurrentlyPlaying)
@@ -468,93 +474,91 @@ float NextSamples (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
     }
 
     if (! isCurrentlyRecording)
-        output = output * drywet + in[i] * (.968f - drywet);    //slider apparently only goes to .968f lol
+        output = output * drywet + in[i] * (.968f - drywet); //slider apparently only goes to .968f lol
 
     return output;
 }
 
-void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer inputBuffer,
+void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     daisy::AudioHandle::InterleavingOutputBuffer outputBuffer,
-                    size_t numSamples)
+                    size_t                                       numSamples)
 {
-    float outl, outr, inl, inr;
-
     ProcessControls();
 
-    for(size_t curSample = 0; curSample < numSamples; curSample += 2)
+    float outputLeft, outputRight, inputLeft, inputRight;
+    for (size_t curSample = 0; curSample < numSamples; curSample += 2)
     {
-        float output = NextSamples (inputBuffer, curSample);
+        //get looper output
+        const auto looperOutput { GetSampleFromLooper (inputBuffer, curSample) };
+        outputBuffer[curSample] = outputBuffer[curSample + 1] = looperOutput;
 
-        // left and right outs
-        outputBuffer[curSample] = outputBuffer[curSample + 1] = output;
-
-        //applying effects right on the output buffer
-        inl = outputBuffer[curSample];
-        inr = outputBuffer[curSample + 1];
+        //apply effects
+        inputLeft = outputBuffer[curSample];
+        inputRight = outputBuffer[curSample + 1];
 
         switch (curFxMode)
         {
-            case fxMode::reverb: GetReverbSample (outl, outr, inl, inr); break;
-            case fxMode::delay: GetDelaySample (outl, outr, inl, inr); break;
-            case fxMode::crush: GetCrushSample (outl, outr, inl, inr); break;
-            default: outl = outr = 0;
+            case fxMode::reverb: GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
+            case fxMode::delay: GetDelaySample (outputLeft, outputRight, inputLeft, inputRight); break;
+            case fxMode::crush: GetCrushSample (outputLeft, outputRight, inputLeft, inputRight); break;
+            default: outputLeft = outputRight = 0;
         }
 
-        outputBuffer[curSample] = outl;
-        outputBuffer[curSample + 1] = outr;
+        outputBuffer[curSample]     = outputLeft;
+        outputBuffer[curSample + 1] = outputRight;
     }
 }
 
-void PrintFloat (const char* text, float value, int decimalPlaces)
+void PrintFloat (const char *text, float value, int decimalPlaces)
 {
-    const auto wholeValue { static_cast<int> (value) };
-    const auto fractionalValue { static_cast<int> (static_cast<float> (std::pow (10, decimalPlaces)) * (value - static_cast<float> (wholeValue))) };
+    const auto wholeValue{static_cast<int> (value)};
+    const auto fractionalValue{static_cast<int> (static_cast<float> (std::pow (10, decimalPlaces)) * (value - static_cast<float> (wholeValue)))};
     pod.seed.PrintLine ("%s: %d.%d", text, wholeValue, fractionalValue);
 }
 
-int main(void)
+int main (void)
 {
     // initialize pod hardware and logger
     pod.Init();
-    pod.SetAudioBlockSize(4);   // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
-    pod.seed.StartLog ();
+    pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
+    pod.seed.StartLog();
 
     ResetLooperState();
 
     //init everything related to effects
     float sample_rate = pod.AudioSampleRate();
-    rev.Init(sample_rate);
-    dell.Init();
-    delr.Init();
-    tone.Init(sample_rate);
+    reverbSC.Init (sample_rate);
+    leftDelay.Init();
+    rightDelay.Init();
+    tone.Init (sample_rate);
 
     //set parameters
-    deltime.Init(pod.knob1, sample_rate * .05, maxDelayTime, deltime.LOGARITHMIC);
-    cutoffParam.Init(pod.knob1, 500, 20000, cutoffParam.LOGARITHMIC);
-    crushrate.Init(pod.knob2, 1, 50, crushrate.LOGARITHMIC);
+    deltime.Init (pod.knob1, sample_rate * .05, maxDelayTime, deltime.LOGARITHMIC);
+    cutoffParam.Init (pod.knob1, 500, 20000, cutoffParam.LOGARITHMIC);
+    crushrate.Init (pod.knob2, 1, 50, crushrate.LOGARITHMIC);
 
     //reverb parameters
-    rev.SetLpFreq(18000.0f);
-    rev.SetFeedback(0.85f);
+    reverbSC.SetLpFreq (18000.0f);
+    reverbSC.SetFeedback (0.85f);
 
     //delay parameters
     currentDelay = delayTarget = sample_rate * 0.75f;
-    dell.SetDelay(currentDelay);
-    delr.SetDelay(currentDelay);
+    leftDelay.SetDelay (currentDelay);
+    rightDelay.SetDelay (currentDelay);
 
     // start audio
     pod.StartAdc();
     pod.StartAudio (AudioCallback);
 
-    while(1)
+    while (1)
     {
         // blink the led
-        pod.seed.SetLed(led_state);
+        pod.seed.SetLed (led_state);
         led_state = !led_state;
 
         PrintFloat ("dry wet", drywet, 3);
 
-        daisy::System::Delay(1000);
+        daisy::System::Delay (1000);
     }
 }
 
