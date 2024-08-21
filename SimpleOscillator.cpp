@@ -263,8 +263,6 @@ int main(void)
 
 #include "daisysp.h"
 #include "daisy_pod.h"
-#include "submodules/DaisySP/DaisySP-LGPL/Source/Effects/reverbsc.h"
-#include "submodules/DaisySP/DaisySP-LGPL/Source/Filters/tone.h"
 
 #define MAX_SIZE (48000 * 60 * 5)                   // 5 minutes of floats at 48 khz
 #define MAX_DELAY static_cast<size_t>(48000 * 2.5f) // Set max delay time to 0.75 of samplerate.
