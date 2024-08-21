@@ -68,7 +68,10 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "xiosbase": "cpp",
-        "usbh_conf.h": "c"
+        "usbh_conf.h": "c",
+        "bitset": "cpp",
+        "ranges": "cpp",
+        "regex": "cpp"
     },
     "editor.tokenColorCustomizations": {
         "textMateRules": [

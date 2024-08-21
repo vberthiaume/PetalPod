@@ -264,8 +264,8 @@ int main(void)
 #include "daisysp.h"
 #include "daisy_pod.h"
 
-#define MAX_SIZE (48000 * 60 * 5)                   // 5 minutes of floats at 48 khz
-#define MAX_DELAY static_cast<size_t>(48000 * 2.5f) // Set max delay time to 0.75 of samplerate.
+constexpr int maxRecordingSize { 48000 * 60 * 5 };                   // 5 minutes of floats at 48 khz
+constexpr size_t maxDelayTime { static_cast<size_t>(48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
 #define REV 0
 #define DEL 1
 #define CRU 2
@@ -281,8 +281,8 @@ bool isCurrentlyRecording = false;
 bool isCurrentlyPlaying   = false;
 
 int                 pos = 0;
-float DSY_SDRAM_BSS buf[MAX_SIZE];  //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
-int                 mod       = MAX_SIZE;
+float DSY_SDRAM_BSS buf[maxRecordingSize];  //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
+int                 mod       = maxRecordingSize;
 int                 len       = 0;
 
 float               drywet    = 0;
@@ -292,8 +292,8 @@ bool                led_state = true;
 
 //effect things
 static ReverbSc                                  rev;
-static DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS dell;
-static DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS delr;
+static DelayLine<float, maxDelayTime> DSY_SDRAM_BSS dell;
+static DelayLine<float, maxDelayTime> DSY_SDRAM_BSS delr;
 static Tone                                      tone;
 static daisy::Parameter                          deltime, cutoffParam, crushrate;
 int                                              mode = REV;
@@ -314,7 +314,7 @@ void ResetLooperState()
     for(int i = 0; i < mod; i++)
         buf[i] = 0;
 
-    mod = MAX_SIZE;
+    mod = maxRecordingSize;
 }
 
 void GetReverbSample(float &outl, float &outr, float inl, float inr)
@@ -452,10 +452,10 @@ float NextSamples (AudioHandle::InterleavingInputBuffer in, size_t i)
     float output = buf[pos];
 
     //automatic looptime
-    if(len >= MAX_SIZE)
+    if(len >= maxRecordingSize)
     {
         isFirstLoop = false;
-        mod   = MAX_SIZE;
+        mod   = maxRecordingSize;
         len   = 0;
     }
 
@@ -527,7 +527,7 @@ int main(void)
     tone.Init(sample_rate);
 
     //set parameters
-    deltime.Init(pod.knob1, sample_rate * .05, MAX_DELAY, deltime.LOGARITHMIC);
+    deltime.Init(pod.knob1, sample_rate * .05, maxDelayTime, deltime.LOGARITHMIC);
     cutoffParam.Init(pod.knob1, 500, 20000, cutoffParam.LOGARITHMIC);
     crushrate.Init(pod.knob2, 1, 50, crushrate.LOGARITHMIC);
 
