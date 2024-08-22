@@ -143,6 +143,8 @@ void UpdateButtons()
             numRecordedSamples  = 0;
 
             FadeOutLooperBuffer();
+            isCurrentlyRecording = false;
+            return;
         }
 
         isCurrentlyPlaying   = true;
@@ -296,15 +298,25 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
     return outputSample;
 }
 
+bool           gotPreviousSample       = false;
+float          previousSample          = -1000.f;
+constexpr auto inputDetectionThreshold = .4f;
+
 void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     daisy::AudioHandle::InterleavingOutputBuffer outputBuffer,
                     size_t                                       numSamples)
 {
+    if (! gotPreviousSample && numSamples > 0)
+        previousSample = inputBuffer[0];
+
     ProcessControls();
 
     float outputLeft, outputRight, inputLeft, inputRight;
     for (size_t curSample = 0; curSample < numSamples; curSample += 2)
     {
+        if (isFirstLoop && ! isCurrentlyRecording && std::abs (outputBuffer[curSample] - previousSample) > inputDetectionThreshold)
+            isCurrentlyRecording = true;
+
         //get looper output
         const auto looperOutput { GetLooperSample (inputBuffer, curSample) };
         outputBuffer[curSample] = outputBuffer[curSample + 1] = looperOutput;
@@ -323,6 +335,8 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
 
         outputBuffer[curSample]     = outputLeft;
         outputBuffer[curSample + 1] = outputRight;
+
+        previousSample = outputBuffer[curSample];
     }
 }
 
