@@ -106,12 +106,13 @@ void UpdateButtons()
             cappedRecordingSize = numRecordedSamples;
             numRecordedSamples  = 0;
 
-            const auto diff{cappedRecordingSize - fadeOutLength};
-            const auto actualFadeOut = diff > 0 ? diff : cappedRecordingSize;
+            const auto diff = cappedRecordingSize - fadeOutLength;
+            const auto actualFadeOut = (diff > fadeOutLength) ? fadeOutLength : cappedRecordingSize;
             for (int i = cappedRecordingSize; i > cappedRecordingSize - actualFadeOut; --i)
             {
-                //NOW HERE DEBUG THIS
-                const auto mult{(1 - i) / actualFadeOut};
+                // const auto mult = (1 - i) / actualFadeOut;
+                const auto mult = jmap (static_cast<float> (i), static_cast<float> (cappedRecordingSize), static_cast<float> (cappedRecordingSize - actualFadeOut), 0.f, 1.f);
+                // PrintFloat (pod.seed, "mult", mult, 5);
                 looperBuffer[i] *= mult;
             }
         }
@@ -292,7 +293,7 @@ int main (void)
     // initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
-    pod.seed.StartLog();
+    pod.seed.StartLog(true);
 
     ResetLooperState();
 

@@ -8,3 +8,17 @@ inline void PrintFloat (daisy::DaisySeed& seed, const char *text, float value, i
     const auto fractionalValue{static_cast<int> (static_cast<float> (std::pow (10, decimalPlaces)) * (value - static_cast<float> (wholeValue)))};
     seed.PrintLine ("%s: %d.%d", text, wholeValue, fractionalValue);
 }
+
+/** Remaps a value from a source range to a target range. */
+// template <typename Type>
+// Type jmap (Type sourceValue, Type sourceRangeMin, Type sourceRangeMax, Type targetRangeMin, Type targetRangeMax)
+// {
+//     // assert (sourceRangeMax - sourceRangeMin > Type (0)); // mapping from a range of zero will produce NaN!
+//     return targetRangeMin + ((targetRangeMax - targetRangeMin) * (sourceValue - sourceRangeMin)) / (sourceRangeMax - sourceRangeMin);
+// }
+
+float jmap (float sourceValue, float sourceRangeMin, float sourceRangeMax, float targetRangeMin, float targetRangeMax)
+{
+    // assert (sourceRangeMax - sourceRangeMin > Type (0)); // mapping from a range of zero will produce NaN!
+    return targetRangeMin + ((targetRangeMax - targetRangeMin) * (sourceValue - sourceRangeMin)) / (sourceRangeMax - sourceRangeMin);
+}
