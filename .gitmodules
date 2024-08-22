@@ -1,10 +1,10 @@
 [submodule "DaisySP"]
-	path = DaisySP
+	path = submodules/DaisySP
 	url = git@github.com:electro-smith/DaisySP.git
 	branch = master
 [submodule "stmlib"]
-	path = stmlib
+	path = submodules/stmlib
 	url = git@github.com:pichenettes/stmlib.git
 [submodule "libDaisy"]
-	path = libDaisy
+	path = submodules/libDaisy
 	url = git@github.com:electro-smith/libDaisy.git

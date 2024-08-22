@@ -67,7 +67,11 @@
         "thread": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp",
-        "xiosbase": "cpp"
+        "xiosbase": "cpp",
+        "usbh_conf.h": "c",
+        "bitset": "cpp",
+        "ranges": "cpp",
+        "regex": "cpp"
     },
     "editor.tokenColorCustomizations": {
         "textMateRules": [
@@ -90,6 +94,7 @@
                 }
             }
         ]
-    }
+    },
+    "cmake.configureOnOpen": false
     
 }

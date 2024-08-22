@@ -1,12 +1,14 @@
 # Project Name
-TARGET = SimpleOscillator
+TARGET = PetalPod
+
+USE_DAISYSP_LGPL = 1
 
 # Sources
-CPP_SOURCES = SimpleOscillator.cpp
+CPP_SOURCES = source/PetalPod.cpp
 
 # Library Locations
-LIBDAISY_DIR = ../../libDaisy
-DAISYSP_DIR = ../../DaisySP
+LIBDAISY_DIR = submodules/libDaisy
+DAISYSP_DIR = submodules/DaisySP
 
 # Core location, and generic Makefile.
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
