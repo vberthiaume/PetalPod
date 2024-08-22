@@ -86,6 +86,24 @@ void GetCrushSample (float &outl, float &outr, float inl, float inr)
     outr = tone.Process (crushsr);
 }
 
+void FadeOutLooperBuffer()
+{
+    const auto diff          = cappedRecordingSize - fadeOutLength;
+    const auto actualFadeOut = (diff > fadeOutLength) ? fadeOutLength : cappedRecordingSize;
+    for (int i = cappedRecordingSize; i > cappedRecordingSize - actualFadeOut; --i)
+    {
+        //map i values to a ramp that goes from 0 to 1
+        const auto ramp = jmap (static_cast<float> (i), static_cast<float> (cappedRecordingSize),
+                                static_cast<float> (cappedRecordingSize - actualFadeOut), 0.f, 1.f);
+
+        //can't print from the audio thread/callback
+        // PrintFloat (pod.seed, "ramp", ramp, 2);
+
+        //ramp out looper buffer
+        looperBuffer[i] *= ramp;
+    }
+}
+
 #if 1
 void UpdateButtons()
 {
@@ -106,19 +124,7 @@ void UpdateButtons()
             cappedRecordingSize = numRecordedSamples;
             numRecordedSamples  = 0;
 
-            const auto diff = cappedRecordingSize - fadeOutLength;
-            const auto actualFadeOut = (diff > fadeOutLength) ? fadeOutLength : cappedRecordingSize;
-            for (int i = cappedRecordingSize; i > cappedRecordingSize - actualFadeOut; --i)
-            {
-                //map i values to a ramp that goes from 0 to 1
-                const auto ramp = jmap (static_cast<float> (i), static_cast<float> (cappedRecordingSize), static_cast<float> (cappedRecordingSize - actualFadeOut), 0.f, 1.f);
-
-                //can't print from the audio thread/callback
-                // PrintFloat (pod.seed, "ramp", ramp, 2);
-
-                //ramp out looper buffer
-                looperBuffer[i] *= ramp;
-            }
+            FadeOutLooperBuffer();
         }
 
         isCurrentlyRecording = false;
