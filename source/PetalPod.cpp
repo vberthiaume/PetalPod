@@ -89,22 +89,31 @@ void GetCrushSample (float &outl, float &outr, float inl, float inr)
 #if 1
 void UpdateButtons()
 {
-    //button 1 just started to be held button
+    //button 1 just started to be held button: start recording
     if (pod.button1.RisingEdge())
     {
         isCurrentlyPlaying   = true;
         isCurrentlyRecording = true;
     }
 
-    //button 1 was just released
+    //button 1 was just released: stop recording
     if (pod.button1.FallingEdge())
     {
         if (isFirstLoop && isCurrentlyRecording) //we were recording the first loop and now it stopped
         {
             //so set the loop length
-            isFirstLoop = false;
-            cappedRecordingSize         = numRecordedSamples;
-            numRecordedSamples         = 0;
+            isFirstLoop         = false;
+            cappedRecordingSize = numRecordedSamples;
+            numRecordedSamples  = 0;
+
+            const auto diff{cappedRecordingSize - fadeOutLength};
+            const auto actualFadeOut = diff > 0 ? diff : cappedRecordingSize;
+            for (int i = cappedRecordingSize; i > cappedRecordingSize - actualFadeOut; --i)
+            {
+                //NOW HERE DEBUG THIS
+                const auto mult{(1 - i) / actualFadeOut};
+                looperBuffer[i] *= mult;
+            }
         }
 
         isCurrentlyRecording = false;
