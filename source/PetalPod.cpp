@@ -1,10 +1,21 @@
 #include "daisysp.h"
-
 #include "helper.hpp"
 
 daisy::DaisyPod pod;
 
-constexpr int    maxRecordingSize{48000 * 60 * 5};                 // 5 minutes of floats at 48 khz
+//looper things
+constexpr auto maxRecordingSize     = 48000 * 60 * 5; // 5 minutes of floats at 48 khz
+constexpr auto fadeOutLength        = 30;             // the number of samples at the end of the loop where we apply a linear fade out
+bool           isFirstLoop          = true;           // the first loop will set the length for the buffer
+bool           isCurrentlyRecording = false;
+bool           isCurrentlyPlaying   = false;
+
+float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
+int                 positionInLooperBuffer = 0;
+int                 cappedRecordingSize = maxRecordingSize;
+int                 numRecordedSamples = 0;
+
+//effect things
 constexpr size_t maxDelayTime{static_cast<size_t> (48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
 
 enum fxMode
@@ -15,22 +26,11 @@ enum fxMode
     total
 };
 
-//looper things
-bool isFirstLoop          = true; //the first loop will set the length for the buffer
-bool isCurrentlyRecording = false;
-bool isCurrentlyPlaying   = false;
-
-float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
-int                 positionInLooperBuffer = 0;
-int                 cappedRecordingSize = maxRecordingSize;
-int                 numRecordedSamples = 0;
-
-//effect things
 daisysp::ReverbSc                                     reverbSC;
 daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS leftDelay;
 daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS rightDelay;
 daisysp::Tone                                         tone;
-daisy::Parameter                                      deltime, cutoffParam, crushrate;
+daisy::Parameter                                      delayTime, cutoffParam, crushrate;
 int                                                   curFxMode = fxMode::reverb;
 
 float currentDelay, feedback, delayTarget, cutoff;
@@ -147,7 +147,8 @@ void UpdateButtons()
 
 void UpdateEffectKnobs (float &k1, float &k2)
 {
-    k1 = pod.knob1.Process();
+    drywet = pod.knob1.Process();
+    k1 = drywet;
     k2 = pod.knob2.Process();
 
     switch (curFxMode)
@@ -157,7 +158,7 @@ void UpdateEffectKnobs (float &k1, float &k2)
             reverbSC.SetFeedback (k2);
             break;
         case fxMode::delay:
-            delayTarget = deltime.Process();
+            delayTarget = delayTime.Process();
             feedback    = k2;
             break;
         case fxMode::crush:
@@ -192,12 +193,12 @@ void UpdateLeds(float k1, float k2)
 void ProcessControls()
 {
     float k1, k2;
-    delayTarget = feedback = drywet = 0;
+    delayTarget = 0;
+    feedback = 0;
+    drywet = 0;
 
     pod.ProcessAnalogControls();
     pod.ProcessDigitalControls();
-
-    drywet = pod.knob1.Process();
 
     UpdateButtons();
 
@@ -208,24 +209,23 @@ void ProcessControls()
     UpdateLeds (k1, k2);
 }
 
-void RecordIntoBuffer (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
-{
-    looperBuffer[positionInLooperBuffer] = looperBuffer[positionInLooperBuffer] * 0.5 + in[i] * 0.5;
-
-    if (isFirstLoop)
-        numRecordedSamples++;
-}
-
-float GetSampleFromLooper (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
+float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     //this should basically only happen when we start and we don't have anything recorded
     if (! isCurrentlyRecording && ! isCurrentlyPlaying)
         return in[i];
 
     if (isCurrentlyRecording)
-        RecordIntoBuffer (in, i);
+    {
+        //old, overdub way of recording. How weird to have the current one at .5. Probably a cheap way to avoid clipping
+        //looperBuffer[positionInLooperBuffer] = looperBuffer[positionInLooperBuffer] * 0.5 + in[i] * 0.5;
+        looperBuffer[positionInLooperBuffer] = in[i];
 
-    float outputSample = looperBuffer[positionInLooperBuffer];
+        if (isFirstLoop)
+            ++numRecordedSamples;
+    }
+
+    const auto outputSample = looperBuffer[positionInLooperBuffer];
 
     //truncate loop because we went over our max recording size
     if (numRecordedSamples >= maxRecordingSize)
@@ -237,7 +237,7 @@ float GetSampleFromLooper (daisy::AudioHandle::InterleavingInputBuffer in, size_
 
     if (isCurrentlyPlaying)
     {
-        positionInLooperBuffer++;
+        ++positionInLooperBuffer;
         positionInLooperBuffer %= cappedRecordingSize;
     }
 
@@ -258,7 +258,7 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
     for (size_t curSample = 0; curSample < numSamples; curSample += 2)
     {
         //get looper output
-        const auto looperOutput { GetSampleFromLooper (inputBuffer, curSample) };
+        const auto looperOutput { GetLooperSample (inputBuffer, curSample) };
         outputBuffer[curSample] = outputBuffer[curSample + 1] = looperOutput;
 
         //apply effects
@@ -294,8 +294,8 @@ int main (void)
     rightDelay.Init();
     tone.Init (sample_rate);
 
-    //set parameters
-    deltime.Init (pod.knob1, sample_rate * .05, maxDelayTime, deltime.LOGARITHMIC);
+    //init parameters
+    delayTime.Init (pod.knob1, sample_rate * .05, maxDelayTime, delayTime.LOGARITHMIC);
     cutoffParam.Init (pod.knob1, 500, 20000, cutoffParam.LOGARITHMIC);
     crushrate.Init (pod.knob2, 1, 50, crushrate.LOGARITHMIC);
 
