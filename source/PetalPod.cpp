@@ -104,14 +104,14 @@ void FadeOutLooperBuffer()
     }
 }
 
-#if 1
+#if 0
 void UpdateButtons()
 {
     //button 1 just started to be held button: start recording
     if (pod.button1.RisingEdge())
     {
         isCurrentlyPlaying   = true;
-        isCurrentlyRecording = true;
+        // isCurrentlyRecording = true;
     }
 
     //button 1 was just released: stop recording
@@ -130,6 +130,34 @@ void UpdateButtons()
         isCurrentlyRecording = false;
     }
 }
+#elif 1
+void UpdateButtons()
+{
+    if (pod.button1.RisingEdge())
+    {
+        if (isFirstLoop && isCurrentlyRecording) //we were recording the first loop and now it stopped
+        {
+            //so set the loop length
+            isFirstLoop = false;
+            cappedRecordingSize = numRecordedSamples;
+            numRecordedSamples  = 0;
+
+            FadeOutLooperBuffer();
+        }
+
+        isCurrentlyPlaying   = true;
+
+        //this needs to be set when we detect an input
+        // isCurrentlyRecording = ! isCurrentlyRecording;
+    }
+
+    //button1 pressed and not empty buffer
+    if (pod.button1.RisingEdge() && (isCurrentlyRecording || ! isFirstLoop))
+    {
+        isCurrentlyPlaying   = ! isCurrentlyPlaying;
+        isCurrentlyRecording = false;
+    }
+}
 #else
 void UpdateButtons()
 {
@@ -144,16 +172,16 @@ void UpdateButtons()
             len         = 0;
         }
 
-        res                  = true;
+        reset                  = true;
         isCurrentlyPlaying   = true;
         isCurrentlyRecording = !isCurrentlyRecording;
     }
 
     //button2 held
-    if (pod.button2.TimeHeldMs() >= 1000 && res)
+    if (pod.button2.TimeHeldMs() >= 1000 && reset)
     {
         ResetLooperState();
-        res = false;
+        reset = false;
     }
 
     //button1 pressed and not empty buffer
