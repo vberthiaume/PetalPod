@@ -1,5 +1,6 @@
 #include "daisysp.h"
-#include "daisy_pod.h"
+
+#include "helper.hpp"
 
 daisy::DaisyPod pod;
 
@@ -277,13 +278,6 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
     }
 }
 
-void PrintFloat (const char *text, float value, int decimalPlaces)
-{
-    const auto wholeValue{static_cast<int> (value)};
-    const auto fractionalValue{static_cast<int> (static_cast<float> (std::pow (10, decimalPlaces)) * (value - static_cast<float> (wholeValue)))};
-    pod.seed.PrintLine ("%s: %d.%d", text, wholeValue, fractionalValue);
-}
-
 int main (void)
 {
     // initialize pod hardware and logger
@@ -325,7 +319,7 @@ int main (void)
         pod.seed.SetLed (led_state);
         led_state = !led_state;
 
-        // PrintFloat ("dry wet", drywet, 3);
+        PrintFloat (pod.seed, "dry wet", drywet, 3);
 
         daisy::System::Delay (1000);
     }
