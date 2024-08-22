@@ -19,7 +19,7 @@ _This assumes you have a [daisy pod](https://electro-smith.com/products/pod) and
 # Controls:
 | Control | Description | Comment |
 | - | - | - |
-| Button 1 | Hold to record from the line in | |
+| Button 1 | Hold to record from the line in input | |
 | Button 2 | TBD! | |
 | Knob 1 |  Wet/Dry control for the current effect | |
 | Encoder |  Effect Selection | Reverb, Delay, and Bit-Crushing |
