@@ -5,7 +5,7 @@ daisy::DaisyPod pod;
 
 //looper things
 constexpr auto maxRecordingSize     = 48000 * 60 * 5; // 5 minutes of floats at 48 khz
-constexpr auto fadeOutLength        = 30;             // the number of samples at the end of the loop where we apply a linear fade out
+constexpr auto fadeOutLength        = 1000;             // the number of samples at the end of the loop where we apply a linear fade out
 bool           isFirstLoop          = true;           // the first loop will set the length for the buffer
 bool           isWaitingForInput    = false;
 bool           isCurrentlyRecording = false;
@@ -277,7 +277,7 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     //this should basically only happen when we start and we don't have anything recorded
     if (! isCurrentlyRecording && ! isCurrentlyPlaying)
-        return in[i];
+        return in[i] * (.968f - drywet);
 
     if (isCurrentlyRecording)
     {
@@ -289,7 +289,7 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
             ++numRecordedSamples;
     }
 
-    const auto outputSample = looperBuffer[positionInLooperBuffer];
+    auto outputSample = looperBuffer[positionInLooperBuffer];
 
     //truncate loop because we went over our max recording size
     if (numRecordedSamples >= maxRecordingSize)
@@ -306,15 +306,15 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
     }
 
     //this was to use knob 1 as a dry/wet for the in/out for the looper. Keeping in case it's useful later
-    // if (! isCurrentlyRecording)
-    //     outputSample = outputSample * drywet + in[i] * (.968f - drywet); //slider apparently only goes to .968f lol
+    if (! isCurrentlyRecording)
+        outputSample = outputSample * drywet + in[i] * (.968f - drywet); //slider apparently only goes to .968f lol
 
     return outputSample;
 }
 
 bool           gotPreviousSample       = false;
 float          previousSample          = -1000.f;
-constexpr auto inputDetectionThreshold = .05f;
+constexpr auto inputDetectionThreshold = .025f;
 
 void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     daisy::AudioHandle::InterleavingOutputBuffer outputBuffer,
