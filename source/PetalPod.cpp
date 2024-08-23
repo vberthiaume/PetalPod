@@ -157,12 +157,11 @@ void UpdateButtons()
                 {
                     //stop recording, set the loop length and fade out buffer
                     isCurrentlyRecording = false;
-                    isCurrentlyPlaying   = true;
                     isFirstLoop          = false;
                     cappedRecordingSize  = numRecordedSamples;
                     numRecordedSamples   = 0;
 
-                    // FadeOutLooperBuffer();
+                    FadeOutLooperBuffer();
                 }
             }
         }
@@ -315,7 +314,7 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 
 bool           gotPreviousSample       = false;
 float          previousSample          = -1000.f;
-constexpr auto inputDetectionThreshold = .1f;
+constexpr auto inputDetectionThreshold = .05f;
 
 void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     daisy::AudioHandle::InterleavingOutputBuffer outputBuffer,
@@ -329,8 +328,10 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
     float outputLeft, outputRight, inputLeft, inputRight;
     for (size_t curSample = 0; curSample < numSamples; curSample += 2)
     {
-        if (isWaitingForInput /*&& isFirstLoop && ! isCurrentlyRecording*/ && std::abs (outputBuffer[curSample] - previousSample) > inputDetectionThreshold)
+        if (isWaitingForInput && std::abs (outputBuffer[curSample] - previousSample) > inputDetectionThreshold)
         {
+            //TODO: setting currently playing here is needed to have GetLooperSample call ++positionInLooperBuffer, but i think we can probably use some other bool or rename this one
+            isCurrentlyPlaying   = true;
             isCurrentlyRecording = true;
             isWaitingForInput    = false;
         }
