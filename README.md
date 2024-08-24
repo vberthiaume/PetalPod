@@ -1,4 +1,4 @@
-# Welcome to PetalPod!
+# Welcome to PetalPod FX Looper!
 
 PetalPod is a looper with multi effects, based on the DaisyPod platform. [Here's a demo](https://www.youtube.com/watch?v=12vFhWRrvzs)!
 
