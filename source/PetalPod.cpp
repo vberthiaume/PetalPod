@@ -38,6 +38,11 @@ float currentDelay, feedback, delayTarget, cutoff;
 int   crushmod, crushcount;
 float crushsl, crushsr, drywet;
 
+//input detection
+bool           gotPreviousSample       = false;
+float          previousSample          = -1000.f;
+constexpr auto inputDetectionThreshold = .025f;
+
 void ResetLooperState()
 {
     isWaitingForInput    = false;
@@ -311,10 +316,6 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 
     return outputSample;
 }
-
-bool           gotPreviousSample       = false;
-float          previousSample          = -1000.f;
-constexpr auto inputDetectionThreshold = .025f;
 
 void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     daisy::AudioHandle::InterleavingOutputBuffer outputBuffer,
