@@ -1,10 +1,16 @@
+//I shouldn't need to include this, but not having it causes vscode to think it's missing
+#define USE_DAISYSP_LGPL 1
+
 #include "daisysp.h"
 #include "helper.hpp"
+#include "fatfs.h"
+
+#include <atomic>
 
 daisy::DaisyPod pod;
 
 //looper things
-constexpr auto maxRecordingSize     = 48000 * 60 * 5; // 5 minutes of floats at 48 khz
+constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
 constexpr auto fadeOutLength        = 1000;           // the number of samples at the end of the loop where we apply a linear fade out
 bool           isFirstLoop          = true;           // the first loop will set the length for the buffer
 bool           isWaitingForInput    = false;
@@ -13,8 +19,8 @@ bool           isCurrentlyPlaying   = false;
 
 float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
 int                 positionInLooperBuffer = 0;
-int                 cappedRecordingSize = maxRecordingSize;
-int                 numRecordedSamples = 0;
+int                 cappedRecordingSize    = maxRecordingSize;
+int                 numRecordedSamples     = 0;
 
 //effect things
 constexpr size_t maxDelayTime{static_cast<size_t> (48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
@@ -43,14 +49,21 @@ bool           gotPreviousSample       = false;
 float          previousSample          = -1000.f;
 constexpr auto inputDetectionThreshold = .025f;
 
+//file saving
+daisy::SdmmcHandler sdmmc;
+daisy::FatFSInterface fsi;
+FIL file;
+std::atomic<bool> needToSave { false };
+constexpr const char* loopFileName { "savedLoop.wav" };
+
 void ResetLooperState()
 {
-    isWaitingForInput    = false;
-    isCurrentlyPlaying   = false;
-    isCurrentlyRecording = false;
-    isFirstLoop          = true;
-    positionInLooperBuffer                  = 0;
-    numRecordedSamples                  = 0;
+    isWaitingForInput      = false;
+    isCurrentlyPlaying     = false;
+    isCurrentlyRecording   = false;
+    isFirstLoop            = true;
+    positionInLooperBuffer = 0;
+    numRecordedSamples     = 0;
 
     for (int i = 0; i < cappedRecordingSize; i++)
         looperBuffer[i] = 0;
@@ -111,6 +124,15 @@ void FadeOutLooperBuffer()
     }
 }
 
+void StopRecording()
+{
+    //stop recording, set the loop length and fade out buffer
+    isCurrentlyRecording = false;
+    isFirstLoop          = false;
+    cappedRecordingSize  = numRecordedSamples;
+    numRecordedSamples   = 0;
+}
+
 #if 0
 void UpdateButtons()
 {
@@ -160,12 +182,7 @@ void UpdateButtons()
                 //we did record something
                 else
                 {
-                    //stop recording, set the loop length and fade out buffer
-                    isCurrentlyRecording = false;
-                    isFirstLoop          = false;
-                    cappedRecordingSize  = numRecordedSamples;
-                    numRecordedSamples   = 0;
-
+                    StopRecording();
                     FadeOutLooperBuffer();
                 }
             }
@@ -237,8 +254,13 @@ void UpdateEffectKnobs (float &k1, float &k2)
 
 void UpdateEncoder()
 {
+    //rotating the encoder changes the effects
     curFxMode = curFxMode + pod.encoder.Increment();
     curFxMode = (curFxMode % fxMode::total + fxMode::total) % fxMode::total;
+
+    //pusing the encoder saves the current loop to file
+    if (pod.encoder.RisingEdge())
+        needToSave.store (true);
 }
 
 void UpdateLeds(float k1, float k2)
@@ -361,13 +383,82 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
     }
 }
 
+void restoreSavedLoop()
+{
+    FATFS& fs = fsi.GetSDFileSystem();
+
+    // default to a known error. By the end of the next if-statement it should be FR_OK
+    FRESULT res = FR_NO_FILESYSTEM;
+
+    // mount the filesystem to the root directory. fsi.GetSDPath() can be used when mounting multiple filesystems on different media
+    if (f_mount (&fs, "/", 0) == FR_OK)
+    {
+        if (f_open (&file, loopFileName, FA_OPEN_EXISTING) == FR_OK)
+        {
+            UINT            bytes_read;
+            res = f_read (&file, looperBuffer, cappedRecordingSize, &bytes_read);
+            // assert (cappedRecordingSize == bytes_read);
+            f_close (&file);
+        }
+    }
+
+    if (res == FR_OK)
+        StopRecording();
+}
+
+void InitFileSaving()
+{
+    /** Initialize the SDMMC Hardware 
+     *  For this example we'll use:
+     *  Medium (25MHz), 4-bit, w/out power save settings
+     */
+    daisy::SdmmcHandler::Config sd_cfg;
+    sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
+    sdmmc.Init(sd_cfg);
+
+    /** Setup our interface to the FatFS middleware */
+    daisy::FatFSInterface::Config fsi_config;
+    fsi_config.media = daisy::FatFSInterface::Config::MEDIA_SD;
+    fsi.Init(fsi_config);
+
+    //check if the file exists, and restore it
+    restoreSavedLoop();
+}
+
+void saveLoop()
+{
+    /** Get the reference to the FATFS Filesystem for use in mounting the hardware. */
+    FATFS& fs = fsi.GetSDFileSystem();
+
+    /** default to a known error 
+     *  by the end of the next if-statement it should be FR_OK
+     */
+    // FRESULT res = FR_NO_FILESYSTEM;
+
+    /** mount the filesystem to the root directory 
+     *  fsi.GetSDPath can be used when mounting multiple filesystems on different media
+     */
+    if(f_mount(&fs, "/", 0) == FR_OK)
+    {
+        if(f_open(&file, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE))
+           == FR_OK)
+        {
+            UINT                   bytes_written;
+            f_write (&file, looperBuffer, cappedRecordingSize, &bytes_written);
+            f_close (&file);
+        }
+    }
+
+    // res = FR_OK;
+}
+
 int main (void)
 {
     //initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
     pod.seed.StartLog();
-
+    InitFileSaving();
     ResetLooperState();
 
     //init everything related to effects
@@ -400,7 +491,13 @@ int main (void)
     {
         // blink the led
         pod.seed.SetLed (led_state);
-        led_state = !led_state;
+        led_state = ! led_state;
+
+        if (needToSave.load())
+        {
+            saveLoop();
+            needToSave.store (false);
+        }
 
         PrintFloat (pod.seed, "dry wet", drywet, 3);
 
