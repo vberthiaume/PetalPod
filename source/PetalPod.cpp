@@ -5,8 +5,9 @@ daisy::DaisyPod pod;
 
 //looper things
 constexpr auto maxRecordingSize     = 48000 * 60 * 5; // 5 minutes of floats at 48 khz
-constexpr auto fadeOutLength        = 30;             // the number of samples at the end of the loop where we apply a linear fade out
+constexpr auto fadeOutLength        = 1000;           // the number of samples at the end of the loop where we apply a linear fade out
 bool           isFirstLoop          = true;           // the first loop will set the length for the buffer
+bool           isWaitingForInput    = false;
 bool           isCurrentlyRecording = false;
 bool           isCurrentlyPlaying   = false;
 
@@ -37,8 +38,14 @@ float currentDelay, feedback, delayTarget, cutoff;
 int   crushmod, crushcount;
 float crushsl, crushsr, drywet;
 
+//input detection
+bool           gotPreviousSample       = false;
+float          previousSample          = -1000.f;
+constexpr auto inputDetectionThreshold = .025f;
+
 void ResetLooperState()
 {
+    isWaitingForInput    = false;
     isCurrentlyPlaying   = false;
     isCurrentlyRecording = false;
     isFirstLoop          = true;
@@ -104,14 +111,14 @@ void FadeOutLooperBuffer()
     }
 }
 
-#if 1
+#if 0
 void UpdateButtons()
 {
     //button 1 just started to be held button: start recording
     if (pod.button1.RisingEdge())
     {
         isCurrentlyPlaying   = true;
-        isCurrentlyRecording = true;
+        // isCurrentlyRecording = true;
     }
 
     //button 1 was just released: stop recording
@@ -130,6 +137,46 @@ void UpdateButtons()
         isCurrentlyRecording = false;
     }
 }
+#elif 1
+void UpdateButtons()
+{
+    if (pod.button1.RisingEdge())
+    {
+        if (isFirstLoop)
+        {
+            //button 1 pressed for the first time, we wait for input
+            if (! isCurrentlyRecording)
+            {
+                isWaitingForInput = true;
+            }
+            //button 1 pressed for the second time
+            else
+            {
+                //we never detected any input so we didn't record anything
+                if (isWaitingForInput)
+                {
+                    isWaitingForInput = false;
+                }
+                //we did record something
+                else
+                {
+                    //stop recording, set the loop length and fade out buffer
+                    isCurrentlyRecording = false;
+                    isFirstLoop          = false;
+                    cappedRecordingSize  = numRecordedSamples;
+                    numRecordedSamples   = 0;
+
+                    FadeOutLooperBuffer();
+                }
+            }
+        }
+        //ok so for now after the first loop we don't record
+        else
+        {
+            isCurrentlyPlaying = ! isCurrentlyPlaying;
+        }
+    }
+}
 #else
 void UpdateButtons()
 {
@@ -144,16 +191,16 @@ void UpdateButtons()
             len         = 0;
         }
 
-        res                  = true;
+        reset                  = true;
         isCurrentlyPlaying   = true;
         isCurrentlyRecording = !isCurrentlyRecording;
     }
 
     //button2 held
-    if (pod.button2.TimeHeldMs() >= 1000 && res)
+    if (pod.button2.TimeHeldMs() >= 1000 && reset)
     {
         ResetLooperState();
-        res = false;
+        reset = false;
     }
 
     //button1 pressed and not empty buffer
@@ -198,6 +245,8 @@ void UpdateLeds(float k1, float k2)
 {
     //led1 is red when recording, green when playing, off otherwise
     daisy::Color led1Color;
+    led1Color.Init (daisy::Color::OFF);
+
     if (isCurrentlyRecording)
         led1Color.Init (daisy::Color::RED);
     else if (isCurrentlyPlaying)
@@ -233,7 +282,7 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     //this should basically only happen when we start and we don't have anything recorded
     if (! isCurrentlyRecording && ! isCurrentlyPlaying)
-        return in[i];
+        return in[i] * (.968f - drywet);
 
     if (isCurrentlyRecording)
     {
@@ -245,7 +294,7 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
             ++numRecordedSamples;
     }
 
-    const auto outputSample = looperBuffer[positionInLooperBuffer];
+    auto outputSample = looperBuffer[positionInLooperBuffer];
 
     //truncate loop because we went over our max recording size
     if (numRecordedSamples >= maxRecordingSize)
@@ -262,8 +311,8 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
     }
 
     //this was to use knob 1 as a dry/wet for the in/out for the looper. Keeping in case it's useful later
-    // if (! isCurrentlyRecording)
-    //     outputSample = outputSample * drywet + in[i] * (.968f - drywet); //slider apparently only goes to .968f lol
+    if (! isCurrentlyRecording)
+        outputSample = outputSample * drywet + in[i] * (.968f - drywet); //slider apparently only goes to .968f lol
 
     return outputSample;
 }
@@ -272,13 +321,25 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     daisy::AudioHandle::InterleavingOutputBuffer outputBuffer,
                     size_t                                       numSamples)
 {
+    if (! gotPreviousSample && numSamples > 0)
+        previousSample = inputBuffer[0];
+
     ProcessControls();
 
     float outputLeft, outputRight, inputLeft, inputRight;
     for (size_t curSample = 0; curSample < numSamples; curSample += 2)
     {
+        if (isWaitingForInput && std::abs (outputBuffer[curSample] - previousSample) > inputDetectionThreshold)
+        {
+            //TODO: setting currently playing here is needed to have GetLooperSample call ++positionInLooperBuffer, but i think we can probably use some other bool or rename this one
+            isCurrentlyPlaying   = true;
+            isCurrentlyRecording = true;
+            isWaitingForInput    = false;
+        }
+
         //get looper output
         const auto looperOutput { GetLooperSample (inputBuffer, curSample) };
+        //TODO: support stereo looping here and when recording
         outputBuffer[curSample] = outputBuffer[curSample + 1] = looperOutput;
 
         //apply effects
@@ -295,12 +356,14 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
 
         outputBuffer[curSample]     = outputLeft;
         outputBuffer[curSample + 1] = outputRight;
+
+        previousSample = outputBuffer[curSample];
     }
 }
 
 int main (void)
 {
-    // initialize pod hardware and logger
+    //initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
     pod.seed.StartLog();
@@ -328,7 +391,7 @@ int main (void)
     leftDelay.SetDelay (currentDelay);
     rightDelay.SetDelay (currentDelay);
 
-    // start audio
+    //start audio
     pod.StartAdc();
     pod.StartAudio (AudioCallback);
 

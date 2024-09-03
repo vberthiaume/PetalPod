@@ -40,6 +40,7 @@ SpacesInCStyleCastParentheses: 'false'
 SpacesInContainerLiterals: 'false'
 SpacesInParentheses: 'false'
 SpacesInSquareBrackets: 'false'
+SpaceAfterLogicalNot: 'true'
 Standard: Cpp11
 UseTab: Never
 TabWidth: 4
