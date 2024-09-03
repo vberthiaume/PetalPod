@@ -1,6 +1,6 @@
-# Welcome to PetalPod!
+# Welcome to PetalPod FX Looper!
 
-PetalPod is a looper with multi effects, based on the DaisyPod platform.
+PetalPod is a looper with multi effects, based on the DaisyPod platform. [Here's a demo](https://www.youtube.com/watch?v=12vFhWRrvzs)!
 
 # Setup on Windows
 _This assumes you have a [daisy pod](https://electro-smith.com/products/pod) and the [ST Link](https://electro-smith.com/products/st-link-v3-mini-debugger) debugger_
