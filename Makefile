@@ -2,6 +2,7 @@
 TARGET = PetalPod
 
 USE_DAISYSP_LGPL = 1
+USE_FATFS = 1
 
 # Sources
 CPP_SOURCES = source/PetalPod.cpp

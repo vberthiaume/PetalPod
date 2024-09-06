@@ -383,73 +383,64 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
     }
 }
 
-void restoreSavedLoop()
+void RestoreLoopIfItExists()
 {
-    FATFS& fs = fsi.GetSDFileSystem();
-
-    // default to a known error. By the end of the next if-statement it should be FR_OK
-    FRESULT res = FR_NO_FILESYSTEM;
-
-    // mount the filesystem to the root directory. fsi.GetSDPath() can be used when mounting multiple filesystems on different media
-    if (f_mount (&fs, "/", 0) == FR_OK)
-    {
-        if (f_open (&file, loopFileName, FA_OPEN_EXISTING) == FR_OK)
-        {
-            UINT            bytes_read;
-            res = f_read (&file, looperBuffer, cappedRecordingSize, &bytes_read);
-            // assert (cappedRecordingSize == bytes_read);
-            f_close (&file);
-        }
-    }
-
-    if (res == FR_OK)
-        StopRecording();
-}
-
-void InitFileSaving()
-{
-    /** Initialize the SDMMC Hardware 
-     *  For this example we'll use:
-     *  Medium (25MHz), 4-bit, w/out power save settings
-     */
+    // Initialize the SDMMC Hardware. For this example we'll use: Medium (25MHz), 4-bit, w/out power save settings
     daisy::SdmmcHandler::Config sd_cfg;
     sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
     sdmmc.Init(sd_cfg);
 
-    /** Setup our interface to the FatFS middleware */
+    // Setup our interface to the FatFS middleware
     daisy::FatFSInterface::Config fsi_config;
     fsi_config.media = daisy::FatFSInterface::Config::MEDIA_SD;
     fsi.Init(fsi_config);
-
-    //check if the file exists, and restore it
-    restoreSavedLoop();
-}
-
-void saveLoop()
-{
-    /** Get the reference to the FATFS Filesystem for use in mounting the hardware. */
     FATFS& fs = fsi.GetSDFileSystem();
 
-    /** default to a known error 
-     *  by the end of the next if-statement it should be FR_OK
-     */
-    // FRESULT res = FR_NO_FILESYSTEM;
-
-    /** mount the filesystem to the root directory 
-     *  fsi.GetSDPath can be used when mounting multiple filesystems on different media
-     */
-    if(f_mount(&fs, "/", 0) == FR_OK)
+    // mount the filesystem to the root directory. fsi.GetSDPath() can be used when mounting multiple filesystems on different media
+    bool needToReset = true;
+    if (f_mount (&fs, "/", 0) == FR_OK)
     {
-        if(f_open(&file, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE))
-           == FR_OK)
+        //if loopFileName exists
+        if (f_open (&file, loopFileName, FA_READ | FA_OPEN_EXISTING) == FR_OK)
         {
-            UINT                   bytes_written;
-            f_write (&file, looperBuffer, cappedRecordingSize, &bytes_written);
+            //and we successfully read its content into looperBuffer
+            UINT bytes_read;
+            auto res = f_read (&file, looperBuffer, cappedRecordingSize, &bytes_read);
+            if (res == FR_OK)
+            {
+                //set our state correctly as being fully loaded
+                needToReset = false;
+                numRecordedSamples = bytes_read;
+                StopRecording();
+            }
+
             f_close (&file);
         }
     }
 
-    // res = FR_OK;
+    //reset everything if there was no saved file, or there was an error
+    if (needToReset)
+        ResetLooperState();
+}
+
+void saveLoop()
+{
+    FATFS &fs = fsi.GetSDFileSystem();
+    if (f_mount (&fs, "/", 0) == FR_OK)
+    {
+        auto res = f_open (&file, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE));
+        if (res == FR_OK)
+        {
+            UINT bytes_written;
+            res = f_write (&file, looperBuffer, cappedRecordingSize, &bytes_written);
+            if (res != FR_OK)
+                pod.seed.PrintLine ("couldn't write to file!!");
+
+            f_close (&file);
+        }
+        else
+            pod.seed.PrintLine ("couldn't open file to write into it!!");
+    }
 }
 
 int main (void)
@@ -457,9 +448,9 @@ int main (void)
     //initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
-    pod.seed.StartLog();
-    InitFileSaving();
-    ResetLooperState();
+    pod.seed.StartLog (true);
+
+    RestoreLoopIfItExists();
 
     //init everything related to effects
     float sample_rate = pod.AudioSampleRate();
