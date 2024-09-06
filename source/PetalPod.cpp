@@ -124,6 +124,56 @@ void FadeOutLooperBuffer()
     }
 }
 
+void TestSdCard()
+{
+    const auto testFileName = "DaisyTestFile.txt";
+    const auto testFileContent = "This file is used for testing the Daisy breakout boards. Happy Hacking!";
+
+    FIL SDFile;
+    daisy::SdmmcHandler   sd;
+    daisy::FatFSInterface fsi;
+
+    char     inbuff[2048];
+    char     refbuff[2048];
+
+    uint32_t len, bytesread;
+
+    memset (inbuff, 0, 2048);
+    memset (refbuff, 0, 2048);
+
+    // Init SDMMC
+    daisy::SdmmcHandler::Config sd_cfg;
+    sd_cfg.Defaults();
+    sd.Init (sd_cfg);
+    fsi.Init (daisy::FatFSInterface::Config::MEDIA_SD);
+
+    if (f_mount (&fsi.GetSDFileSystem(), "/", 0) == FR_OK)
+    {
+         if(f_open(&file, testFileName, (FA_CREATE_ALWAYS | FA_WRITE)) == FR_OK)
+        {
+            UINT            bytes_written;
+            auto res = f_write (&file, testFileContent, strlen (testFileContent), &bytes_written);
+            f_close(&file);
+        }
+
+
+
+        // Fill reference buffer with test contents
+        sprintf (refbuff, "%s", testFileContent);
+        len = strlen (refbuff);
+
+        // Read from file and compare
+
+        if (f_open (&SDFile, testFileName, FA_READ) == FR_OK)
+            f_read (&SDFile, inbuff, len, (UINT *) &bytesread);
+
+        if (len == bytesread && strcmp (inbuff, refbuff) == 0)
+            pod.seed.PrintLine ("read file correctly");
+        else
+            pod.seed.PrintLine ("couldn't read file correctly!");
+    }
+}
+
 void StopRecording()
 {
     //stop recording, set the loop length and fade out buffer
@@ -133,8 +183,7 @@ void StopRecording()
     numRecordedSamples   = 0;
 }
 
-#if 0
-void UpdateButtons()
+void UpdateButtonsOldRecordWhileHolding()
 {
     //button 1 just started to be held button: start recording
     if (pod.button1.RisingEdge())
@@ -159,9 +208,15 @@ void UpdateButtons()
         isCurrentlyRecording = false;
     }
 }
-#elif 1
+
+void DeleteSavedFile()
+{
+
+}
+
 void UpdateButtons()
 {
+    //button 1 pressed
     if (pod.button1.RisingEdge())
     {
         if (isFirstLoop)
@@ -193,41 +248,14 @@ void UpdateButtons()
             isCurrentlyPlaying = ! isCurrentlyPlaying;
         }
     }
-}
-#else
-void UpdateButtons()
-{
-    //button2 pressed
-    if (pod.button2.RisingEdge())
-    {
-        if (isFirstLoop && isCurrentlyRecording) //we were recording the first loop and now it stopped
-        {
-            //so set the loop length
-            isFirstLoop = false;
-            mod         = len;
-            len         = 0;
-        }
 
-        reset                  = true;
-        isCurrentlyPlaying   = true;
-        isCurrentlyRecording = !isCurrentlyRecording;
-    }
-
-    //button2 held
-    if (pod.button2.TimeHeldMs() >= 1000 && reset)
+    //button 1 held
+    if (pod.button1.TimeHeldMs() >= 1000)
     {
         ResetLooperState();
-        reset = false;
-    }
-
-    //button1 pressed and not empty buffer
-    if (pod.button1.RisingEdge() && (isCurrentlyRecording || !isFirstLoop))
-    {
-        isCurrentlyPlaying   = !isCurrentlyPlaying;
-        isCurrentlyRecording = false;
+        DeleteSavedFile();
     }
 }
-#endif
 
 void UpdateEffectKnobs (float &k1, float &k2)
 {
@@ -263,7 +291,7 @@ void UpdateEncoder()
         needToSave.store (true);
 }
 
-void UpdateLeds(float k1, float k2)
+void UpdateLeds (float k1, float k2)
 {
     //led1 is red when recording, green when playing, off otherwise
     daisy::Color led1Color;
@@ -450,6 +478,7 @@ int main (void)
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
     pod.seed.StartLog (true);
 
+    TestSdCard();
     RestoreLoopIfItExists();
 
     //init everything related to effects
