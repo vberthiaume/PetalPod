@@ -126,15 +126,48 @@ void FadeOutLooperBuffer()
 
 void TestSdCard()
 {
-    const auto testFileName = "DaisyTestFile.txt";
-    const auto testFileContent = "This file is used for testing the Daisy breakout boards. Happy Hacking!";
+#if 1
+    daisy::SdmmcHandler::Config sd_cfg;
+    sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
+    sdmmc.Init (sd_cfg);
 
-    FIL SDFile;
+    /** Setup our interface to the FatFS middleware */
+    daisy::FatFSInterface::Config fsi_config;
+    fsi_config.media = daisy::FatFSInterface::Config::MEDIA_SD;
+    fsi.Init (fsi_config);
+
+    FATFS &fs = fsi.GetSDFileSystem();
+    FRESULT res = f_mount (&fs, "/", 0);
+    if (res == FR_OK)
+    {
+        res = f_open (&file, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE));
+        if (res == FR_OK)
+        {
+            daisy::FixedCapStr<20> str = "Hello World!";
+            UINT            bytes_written;
+            res = f_write (&file, str.Cstr(), str.Size(), &bytes_written);
+
+            f_close (&file);
+        }
+
+        char readBuffer [20];
+        uint32_t len, bytesread;
+        if (f_open (&file, loopFileName, FA_READ) == FR_OK)
+            f_read (&file, readBuffer, len, (UINT *) &bytesread);
+
+        if (len == bytesread /*&& strcmp (inbuff, refbuff) == 0*/)
+            pod.seed.PrintLine ("read file correctly");
+        else
+            pod.seed.PrintLine ("couldn't read file correctly!");
+    }
+#else
+
+    FIL                   SDFile;
     daisy::SdmmcHandler   sd;
     daisy::FatFSInterface fsi;
 
-    char     inbuff[2048];
-    char     refbuff[2048];
+    char inbuff[2048];
+    char refbuff[2048];
 
     uint32_t len, bytesread;
 
@@ -149,21 +182,18 @@ void TestSdCard()
 
     if (f_mount (&fsi.GetSDFileSystem(), "/", 0) == FR_OK)
     {
-         if(f_open(&file, testFileName, (FA_CREATE_ALWAYS | FA_WRITE)) == FR_OK)
+        if (f_open (&file, testFileName, (FA_CREATE_ALWAYS | FA_WRITE)) == FR_OK)
         {
-            UINT            bytes_written;
+            UINT bytes_written;
             auto res = f_write (&file, testFileContent, strlen (testFileContent), &bytes_written);
-            f_close(&file);
+            f_close (&file);
         }
-
-
 
         // Fill reference buffer with test contents
         sprintf (refbuff, "%s", testFileContent);
         len = strlen (refbuff);
 
         // Read from file and compare
-
         if (f_open (&SDFile, testFileName, FA_READ) == FR_OK)
             f_read (&SDFile, inbuff, len, (UINT *) &bytesread);
 
@@ -172,6 +202,7 @@ void TestSdCard()
         else
             pod.seed.PrintLine ("couldn't read file correctly!");
     }
+#endif
 }
 
 void StopRecording()
