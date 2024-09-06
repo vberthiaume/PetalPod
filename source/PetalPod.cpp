@@ -155,10 +155,14 @@ void TestSdCard()
         if (f_open (&file, loopFileName, FA_READ) == FR_OK)
             f_read (&file, readBuffer, len, (UINT *) &bytesread);
 
-        if (len == bytesread /*&& strcmp (inbuff, refbuff) == 0*/)
+        const auto sameSize = (len == bytesread);
+
+        //NOW HERE: for some reason we're not reading back the right content
+        const auto sameContent = (strcmp (readBuffer, "Hello World!") == 0);
+        if (sameSize && sameContent)
             pod.seed.PrintLine ("read file correctly");
         else
-            pod.seed.PrintLine ("couldn't read file correctly!");
+            pod.seed.PrintLine ("couldn't read file correctly! %s", readBuffer);
     }
 #else
 
