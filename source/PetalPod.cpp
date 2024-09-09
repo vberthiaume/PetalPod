@@ -127,7 +127,7 @@ void FadeOutLooperBuffer()
 void TestSdCard()
 {
 #if 1
-#define TEST_FILE_NAME "DaisyTestFile.txt"
+#define TEST_FILE_NAME "DaisyTestFile5.txt"
 #define TEST_FILE_CONTENTS \
     "This file is used for testing the Daisy breakout boards. Happy Hacking!"
 
@@ -145,9 +145,12 @@ void TestSdCard()
     // Init SDMMC
     daisy::SdmmcHandler::Config sd_cfg;
     sd_cfg.Defaults();
+    //took this from here, not sure it's relevant: https://forum.electro-smith.com/t/connecting-an-sd-card-to-the-daisy-seed/4227/11
+    // sd_cfg.width = daisy::SdmmcHandler::BusWidth::BITS_1;
     sd.Init(sd_cfg);
     fsi.Init(daisy::FatFSInterface::Config::MEDIA_SD);
-    f_mount(&fsi.GetSDFileSystem(), "/", 0);
+    //arf -- this used to "just work", and now we get stuck in there somewhere
+    f_mount(&fsi.GetSDFileSystem(), "/", 1);
 
     //write content to file
     auto res = f_open (&SDFile, TEST_FILE_NAME, (FA_CREATE_ALWAYS | FA_WRITE));
@@ -158,7 +161,9 @@ void TestSdCard()
         if (res != FR_OK)
             pod.seed.PrintLine ("error!");
 
-        f_close (&SDFile);
+        res = f_close (&SDFile);
+        if (res != FR_OK)
+            pod.seed.PrintLine ("error!");
     }
 
     // Fill reference buffer with test contents
@@ -174,7 +179,9 @@ void TestSdCard()
         if (res != FR_OK)
             pod.seed.PrintLine ("error!");
 
-        f_close (&SDFile);
+        res = f_close (&SDFile);
+        if (res != FR_OK)
+            pod.seed.PrintLine ("error!");
     }
 
     if (len == bytesread && strcmp(buff, refbuff) == 0)
@@ -570,7 +577,15 @@ int main (void)
     pod.seed.StartLog (true);
 
     TestSdCard();
-    #if 0
+#if 1
+    bool led_state = true;
+    while (1)
+    {
+        pod.seed.SetLed (led_state);
+        led_state = ! led_state;
+        daisy::System::Delay (1000);
+    }
+#else
     RestoreLoopIfItExists();
 
     //init everything related to effects
