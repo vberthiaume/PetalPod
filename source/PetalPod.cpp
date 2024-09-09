@@ -153,9 +153,12 @@ void TestSdCard()
     auto res = f_open (&SDFile, TEST_FILE_NAME, (FA_CREATE_ALWAYS | FA_WRITE));
     if (res == FR_OK)
     {
-        UINT            bytes_written;
+        UINT bytes_written;
         res = f_write (&SDFile, TEST_FILE_CONTENTS, 72, &bytes_written);
-        f_close (&file);
+        if (res != FR_OK)
+            pod.seed.PrintLine ("error!");
+
+        f_close (&SDFile);
     }
 
     // Fill reference buffer with test contents
@@ -164,9 +167,15 @@ void TestSdCard()
 
     // Read from file and compare
     buff = inbuff;
-    res = f_open (&SDFile, TEST_FILE_NAME, FA_READ);
+    res = f_open (&SDFile, TEST_FILE_NAME, (FA_OPEN_EXISTING | FA_READ));
     if (res == FR_OK)
-        res = f_read (&SDFile, buff, len, (UINT *)&bytesread);
+    {
+        res = f_read (&SDFile, buff, len, (UINT *) &bytesread);
+        if (res != FR_OK)
+            pod.seed.PrintLine ("error!");
+
+        f_close (&SDFile);
+    }
 
     if (len == bytesread && strcmp(buff, refbuff) == 0)
         sta = 0;
