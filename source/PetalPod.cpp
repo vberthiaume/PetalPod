@@ -127,6 +127,54 @@ void FadeOutLooperBuffer()
 void TestSdCard()
 {
 #if 1
+#define TEST_FILE_NAME "DaisyTestFile.txt"
+#define TEST_FILE_CONTENTS \
+    "This file is used for testing the Daisy breakout boards. Happy Hacking!"
+
+    int      sta;
+    char     inbuff[2048];
+    char     refbuff[2048];
+    char    *buff;
+    uint32_t len, bytesread;
+    daisy::SdmmcHandler   sd;
+    FIL SDFile;
+
+    memset(inbuff, 0, 2048);
+    memset(refbuff, 0, 2048);
+
+    // Init SDMMC
+    daisy::SdmmcHandler::Config sd_cfg;
+    sd_cfg.Defaults();
+    sd.Init(sd_cfg);
+    fsi.Init(daisy::FatFSInterface::Config::MEDIA_SD);
+    f_mount(&fsi.GetSDFileSystem(), "/", 0);
+
+    //write content to file
+    auto res = f_open (&SDFile, TEST_FILE_NAME, (FA_CREATE_ALWAYS | FA_WRITE));
+    if (res == FR_OK)
+    {
+        UINT            bytes_written;
+        res = f_write (&SDFile, TEST_FILE_CONTENTS, 72, &bytes_written);
+        f_close (&file);
+    }
+
+    // Fill reference buffer with test contents
+    sprintf(refbuff, "%s", TEST_FILE_CONTENTS);
+    len = strlen(refbuff);
+
+    // Read from file and compare
+    buff = inbuff;
+    res = f_open (&SDFile, TEST_FILE_NAME, FA_READ);
+    if (res == FR_OK)
+        res = f_read (&SDFile, buff, len, (UINT *)&bytesread);
+
+    if (len == bytesread && strcmp(buff, refbuff) == 0)
+        sta = 0;
+
+    else
+        sta = 1;
+
+#elif 1
     daisy::SdmmcHandler::Config sd_cfg;
     sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
     sdmmc.Init (sd_cfg);
@@ -165,7 +213,6 @@ void TestSdCard()
             pod.seed.PrintLine ("couldn't read file correctly! %s", readBuffer);
     }
 #else
-
     FIL                   SDFile;
     daisy::SdmmcHandler   sd;
     daisy::FatFSInterface fsi;
@@ -514,6 +561,7 @@ int main (void)
     pod.seed.StartLog (true);
 
     TestSdCard();
+    #if 0
     RestoreLoopIfItExists();
 
     //init everything related to effects
@@ -558,4 +606,5 @@ int main (void)
 
         daisy::System::Delay (1000);
     }
+#endif
 }
