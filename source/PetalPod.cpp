@@ -390,10 +390,11 @@ void RestoreLoopIfItExists()
     if (f_mount (&fs, "/", 0) == FR_OK)
     {
         //if loopFileName exists
-        if (f_open (&file, loopFileName, FA_READ | FA_OPEN_EXISTING) == FR_OK)
+        if (f_open (&file, loopFileName, FA_READ) == FR_OK)
         {
             //and we successfully read its content into looperBuffer
             UINT bytes_read;
+            //TODO: LOL, we need to save the cappedRecordingSize somewhere, otherwise after a restart it'll have the default value
             auto res = f_read (&file, looperBuffer, cappedRecordingSize, &bytes_read);
             if (res == FR_OK)
             {
@@ -434,77 +435,10 @@ void saveLoop()
 
 int main (void)
 {
-#if 1
-    /** Initialize our hardware */
-    hw.Init();
-    hw.StartLog (true);
-
-    /** Initialize the SDMMC Hardware 
-     *  For this example we'll use:
-     *  Medium (25MHz), 4-bit, w/out power save settings
-     */
-    daisy::SdmmcHandler::Config sd_cfg;
-    sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
-    sdmmc.Init(sd_cfg);
-
-    /** Setup our interface to the FatFS middleware */
-    daisy::FatFSInterface::Config fsi_config;
-    fsi_config.media = daisy::FatFSInterface::Config::MEDIA_SD;
-    fsi.Init(fsi_config);
-
-    /** Get the reference to the FATFS Filesystem for use in mounting the hardware. */
-    FATFS& fs = fsi.GetSDFileSystem();
-
-    /** default to a known error 
-     *  by the end of the next if-statement it should be FR_OK
-     */
-    FRESULT res = FR_NO_FILESYSTEM;
-
-    /** mount the filesystem to the root directory 
-     *  fsi.GetSDPath can be used when mounting multiple filesystems on different media
-     */
-    if (f_mount (&fs, "/", 0) == FR_OK)
-    {
-        daisy::FixedCapStr<28> str = "Hello World while debugging!";
-
-        if (f_open (&file, TEST_FILE_NAME, (FA_CREATE_ALWAYS | FA_WRITE))
-            == FR_OK)
-        {
-            UINT bytes_written;
-            res = f_write (&file, str.Cstr(), str.Size(), &bytes_written);
-            f_close (&file);
-        }
-
-        char buff[2048];
-        if (f_open (&file, TEST_FILE_NAME, FA_READ) == FR_OK)
-        {
-            UINT bytesread;
-            res = f_read (&file, buff, str.Size(), &bytesread);
-            if (res == FR_OK)
-                hw.PrintLine ("managed to read this from the file: %s", buff);
-            f_close (&file);
-        }
-    }
-
-    /** Infinite Loop */
-    while(1)
-    {
-        /** Very basic blink to indicate success or failure */
-        uint32_t blink_rate;
-        if(res == FR_OK)
-            blink_rate = 125;
-        else
-            blink_rate = 1000;
-        daisy::System::Delay(blink_rate);
-        hw.SetLed(true);
-        daisy::System::Delay(blink_rate);
-        hw.SetLed(false);
-    }
-#else
     //initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
-    pod.seed.StartLog (true);
+    pod.seed.StartLog ();
 
     RestoreLoopIfItExists();
 
@@ -546,9 +480,8 @@ int main (void)
             needToSave.store (false);
         }
 
-        PrintFloat (pod.seed, "dry wet", drywet, 3);
+        // PrintFloat (pod.seed, "dry wet", drywet, 3);
 
         daisy::System::Delay (1000);
     }
-#endif
 }
