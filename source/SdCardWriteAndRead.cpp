@@ -27,6 +27,7 @@ int main(void)
 {
     /** Initialize our hardware */
     hw.Init();
+    hw.StartLog (true);
 
     /** Initialize the SDMMC Hardware 
      *  For this example we'll use:
@@ -52,18 +53,28 @@ int main(void)
     /** mount the filesystem to the root directory 
      *  fsi.GetSDPath can be used when mounting multiple filesystems on different media
      */
-    if(f_mount(&fs, "/", 0) == FR_OK)
+    if (f_mount (&fs, "/", 0) == FR_OK)
     {
-        if(f_open(&file, TEST_FILE_NAME, (FA_CREATE_ALWAYS | FA_WRITE))
-           == FR_OK)
+        FixedCapStr<28> str = "Hello World while debugging!";
+
+        if (f_open (&file, TEST_FILE_NAME, (FA_CREATE_ALWAYS | FA_WRITE))
+            == FR_OK)
         {
-            FixedCapStr<20> str = "Hello World while debugging!";
-            UINT            bytes_written;
-            res = f_write(&file, str.Cstr(), str.Size(), &bytes_written);
-            f_close(&file);
+            UINT bytes_written;
+            res = f_write (&file, str.Cstr(), str.Size(), &bytes_written);
+            f_close (&file);
+        }
+
+        char buff[2048];
+        if (f_open (&file, TEST_FILE_NAME, FA_READ) == FR_OK)
+        {
+            UINT bytesread;
+            res = f_read (&file, buff, str.Size(), &bytesread);
+            if (res == FR_OK)
+                hw.PrintLine ("managed to read this from the file: %s", buff);
+            f_close (&file);
         }
     }
-
 
     /** Infinite Loop */
     while(1)
