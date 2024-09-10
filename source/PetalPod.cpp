@@ -50,11 +50,22 @@ float          previousSample          = -1000.f;
 constexpr auto inputDetectionThreshold = .025f;
 
 //file saving
-daisy::SdmmcHandler sdmmc;
-daisy::FatFSInterface fsi;
-FIL file;
 std::atomic<bool> needToSave { false };
 constexpr const char* loopFileName { "savedLoop.wav" };
+
+#define TEST_FILE_NAME "SdCardWriteAndRead.txt"
+#define TEST_FILE_CONTENTS \
+    "This file is used for testing the Daisy breakout boards. Happy Hacking!"
+
+/** Global Hardware access */
+daisy::DaisySeed hw;
+
+/** SDMMC Configuration */
+daisy::SdmmcHandler sdmmc;
+/** FatFS Interface for libDaisy */
+daisy::FatFSInterface fsi;
+/** Global File object */
+FIL file;
 
 void ResetLooperState()
 {
@@ -122,154 +133,6 @@ void FadeOutLooperBuffer()
         //ramp out looper buffer
         looperBuffer[i] *= ramp;
     }
-}
-
-void TestSdCard()
-{
-#if 1
-#define TEST_FILE_NAME "DaisyTestFile5.txt"
-#define TEST_FILE_CONTENTS \
-    "This file is used for testing the Daisy breakout boards. Happy Hacking!"
-
-    int      sta;
-    char     inbuff[2048];
-    char     refbuff[2048];
-    char    *buff;
-    uint32_t len, bytesread;
-    daisy::SdmmcHandler   sd;
-    FIL SDFile;
-
-    memset(inbuff, 0, 2048);
-    memset(refbuff, 0, 2048);
-
-    // Init SDMMC
-    daisy::SdmmcHandler::Config sd_cfg;
-    sd_cfg.Defaults();
-    //took this from here, not sure it's relevant: https://forum.electro-smith.com/t/connecting-an-sd-card-to-the-daisy-seed/4227/11
-    // sd_cfg.width = daisy::SdmmcHandler::BusWidth::BITS_1;
-    sd.Init(sd_cfg);
-    fsi.Init(daisy::FatFSInterface::Config::MEDIA_SD);
-    //arf -- this used to "just work", and now we get stuck in there somewhere
-    f_mount(&fsi.GetSDFileSystem(), "/", 1);
-
-    //write content to file
-    auto res = f_open (&SDFile, TEST_FILE_NAME, (FA_CREATE_ALWAYS | FA_WRITE));
-    if (res == FR_OK)
-    {
-        UINT bytes_written;
-        res = f_write (&SDFile, TEST_FILE_CONTENTS, 72, &bytes_written);
-        if (res != FR_OK)
-            pod.seed.PrintLine ("error!");
-
-        res = f_close (&SDFile);
-        if (res != FR_OK)
-            pod.seed.PrintLine ("error!");
-    }
-
-    // Fill reference buffer with test contents
-    sprintf(refbuff, "%s", TEST_FILE_CONTENTS);
-    len = strlen(refbuff);
-
-    // Read from file and compare
-    buff = inbuff;
-    res = f_open (&SDFile, TEST_FILE_NAME, (FA_OPEN_EXISTING | FA_READ));
-    if (res == FR_OK)
-    {
-        res = f_read (&SDFile, buff, len, (UINT *) &bytesread);
-        if (res != FR_OK)
-            pod.seed.PrintLine ("error!");
-
-        res = f_close (&SDFile);
-        if (res != FR_OK)
-            pod.seed.PrintLine ("error!");
-    }
-
-    if (len == bytesread && strcmp(buff, refbuff) == 0)
-        sta = 0;
-
-    else
-        sta = 1;
-
-#elif 1
-    daisy::SdmmcHandler::Config sd_cfg;
-    sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
-    sdmmc.Init (sd_cfg);
-
-    /** Setup our interface to the FatFS middleware */
-    daisy::FatFSInterface::Config fsi_config;
-    fsi_config.media = daisy::FatFSInterface::Config::MEDIA_SD;
-    fsi.Init (fsi_config);
-
-    FATFS &fs = fsi.GetSDFileSystem();
-    FRESULT res = f_mount (&fs, "/", 0);
-    if (res == FR_OK)
-    {
-        res = f_open (&file, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE));
-        if (res == FR_OK)
-        {
-            daisy::FixedCapStr<20> str = "Hello World!";
-            UINT            bytes_written;
-            res = f_write (&file, str.Cstr(), str.Size(), &bytes_written);
-
-            f_close (&file);
-        }
-
-        char readBuffer [20];
-        uint32_t len, bytesread;
-        if (f_open (&file, loopFileName, FA_READ) == FR_OK)
-            f_read (&file, readBuffer, len, (UINT *) &bytesread);
-
-        const auto sameSize = (len == bytesread);
-
-        //NOW HERE: for some reason we're not reading back the right content
-        const auto sameContent = (strcmp (readBuffer, "Hello World!") == 0);
-        if (sameSize && sameContent)
-            pod.seed.PrintLine ("read file correctly");
-        else
-            pod.seed.PrintLine ("couldn't read file correctly! %s", readBuffer);
-    }
-#else
-    FIL                   SDFile;
-    daisy::SdmmcHandler   sd;
-    daisy::FatFSInterface fsi;
-
-    char inbuff[2048];
-    char refbuff[2048];
-
-    uint32_t len, bytesread;
-
-    memset (inbuff, 0, 2048);
-    memset (refbuff, 0, 2048);
-
-    // Init SDMMC
-    daisy::SdmmcHandler::Config sd_cfg;
-    sd_cfg.Defaults();
-    sd.Init (sd_cfg);
-    fsi.Init (daisy::FatFSInterface::Config::MEDIA_SD);
-
-    if (f_mount (&fsi.GetSDFileSystem(), "/", 0) == FR_OK)
-    {
-        if (f_open (&file, testFileName, (FA_CREATE_ALWAYS | FA_WRITE)) == FR_OK)
-        {
-            UINT bytes_written;
-            auto res = f_write (&file, testFileContent, strlen (testFileContent), &bytes_written);
-            f_close (&file);
-        }
-
-        // Fill reference buffer with test contents
-        sprintf (refbuff, "%s", testFileContent);
-        len = strlen (refbuff);
-
-        // Read from file and compare
-        if (f_open (&SDFile, testFileName, FA_READ) == FR_OK)
-            f_read (&SDFile, inbuff, len, (UINT *) &bytesread);
-
-        if (len == bytesread && strcmp (inbuff, refbuff) == 0)
-            pod.seed.PrintLine ("read file correctly");
-        else
-            pod.seed.PrintLine ("couldn't read file correctly!");
-    }
-#endif
 }
 
 void StopRecording()
@@ -571,21 +434,78 @@ void saveLoop()
 
 int main (void)
 {
+#if 1
+    /** Initialize our hardware */
+    hw.Init();
+    hw.StartLog (true);
+
+    /** Initialize the SDMMC Hardware 
+     *  For this example we'll use:
+     *  Medium (25MHz), 4-bit, w/out power save settings
+     */
+    daisy::SdmmcHandler::Config sd_cfg;
+    sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
+    sdmmc.Init(sd_cfg);
+
+    /** Setup our interface to the FatFS middleware */
+    daisy::FatFSInterface::Config fsi_config;
+    fsi_config.media = daisy::FatFSInterface::Config::MEDIA_SD;
+    fsi.Init(fsi_config);
+
+    /** Get the reference to the FATFS Filesystem for use in mounting the hardware. */
+    FATFS& fs = fsi.GetSDFileSystem();
+
+    /** default to a known error 
+     *  by the end of the next if-statement it should be FR_OK
+     */
+    FRESULT res = FR_NO_FILESYSTEM;
+
+    /** mount the filesystem to the root directory 
+     *  fsi.GetSDPath can be used when mounting multiple filesystems on different media
+     */
+    if (f_mount (&fs, "/", 0) == FR_OK)
+    {
+        daisy::FixedCapStr<28> str = "Hello World while debugging!";
+
+        if (f_open (&file, TEST_FILE_NAME, (FA_CREATE_ALWAYS | FA_WRITE))
+            == FR_OK)
+        {
+            UINT bytes_written;
+            res = f_write (&file, str.Cstr(), str.Size(), &bytes_written);
+            f_close (&file);
+        }
+
+        char buff[2048];
+        if (f_open (&file, TEST_FILE_NAME, FA_READ) == FR_OK)
+        {
+            UINT bytesread;
+            res = f_read (&file, buff, str.Size(), &bytesread);
+            if (res == FR_OK)
+                hw.PrintLine ("managed to read this from the file: %s", buff);
+            f_close (&file);
+        }
+    }
+
+    /** Infinite Loop */
+    while(1)
+    {
+        /** Very basic blink to indicate success or failure */
+        uint32_t blink_rate;
+        if(res == FR_OK)
+            blink_rate = 125;
+        else
+            blink_rate = 1000;
+        daisy::System::Delay(blink_rate);
+        hw.SetLed(true);
+        daisy::System::Delay(blink_rate);
+        hw.SetLed(false);
+    }
+#else
     //initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
     pod.seed.StartLog (true);
 
-    TestSdCard();
-#if 1
-    bool led_state = true;
-    while (1)
-    {
-        pod.seed.SetLed (led_state);
-        led_state = ! led_state;
-        daisy::System::Delay (1000);
-    }
-#else
     RestoreLoopIfItExists();
 
     //init everything related to effects
