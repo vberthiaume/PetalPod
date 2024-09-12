@@ -51,21 +51,12 @@ constexpr auto inputDetectionThreshold = .025f;
 
 //file saving
 std::atomic<bool> needToSave { false };
-constexpr const char* loopFileName { "savedLoop2.dat" };
-
-#define TEST_FILE_NAME "SdCardWriteAndRead.txt"
-#define TEST_FILE_CONTENTS \
-    "This file is used for testing the Daisy breakout boards. Happy Hacking!"
-
-/** Global Hardware access */
-daisy::DaisySeed hw;
-
-/** SDMMC Configuration */
 daisy::SdmmcHandler sdmmc;
-/** FatFS Interface for libDaisy */
 daisy::FatFSInterface fsi;
-/** Global File object */
-FIL file;
+constexpr const char* loopSizeFileName { "loopSize.dat" };
+FIL loopSizeFile;
+constexpr const char* loopFileName { "savedLoop3.wav" };
+FIL loopFile;
 
 void ResetLooperState()
 {
@@ -385,37 +376,41 @@ void RestoreLoopIfItExists()
     fsi.Init(fsi_config);
     FATFS& fs = fsi.GetSDFileSystem();
 
-    // mount the filesystem to the root directory. fsi.GetSDPath() can be used when mounting multiple filesystems on different media
+    // mount the filesystem to the root directory
     bool needToReset = true;
     if (f_mount (&fs, "/", 0) == FR_OK)
     {
-        //if loopFileName exists
-        if (f_open (&file, loopFileName, FA_READ) == FR_OK)
+        //if loopSizeFile exists
+        if (f_open (&loopSizeFile, loopSizeFileName, FA_READ) == FR_OK)
         {
-            //and we successfully read its content into looperBuffer
             UINT bytes_read;
-
-            auto res = f_read (&file, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_read);
+            //read cappedRecordingSize from the loopSizeFile
+            auto res = f_read (&loopSizeFile, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_read);
             if (res != FR_OK)
             {
                 pod.seed.PrintLine ("couldn't read cappedRecordingSize from file!!");
                 return;
             }
 
-            res = f_read (&file, looperBuffer, cappedRecordingSize, &bytes_read);
-            if (res == FR_OK)
+            //then open the loopFile and try to read cappedRecordingSize bytes from it into the looperBuffer
+            if (f_open (&loopFile, loopFileName, FA_READ) == FR_OK)
             {
-                //set our state correctly as being fully loaded
-                needToReset = false;
-                numRecordedSamples = bytes_read;
-                StopRecording();
-            }
-            else
-            {
-                pod.seed.PrintLine ("couldn't read looperBuffer from file!!");
+                res = f_read (&loopFile, looperBuffer, cappedRecordingSize, &bytes_read);
+                if (res == FR_OK)
+                {
+                    //set our state correctly as being fully loaded
+                    needToReset        = false;
+                    numRecordedSamples = bytes_read;
+                    StopRecording();
+                }
+                else
+                {
+                    pod.seed.PrintLine ("couldn't read looperBuffer from file!!");
+                }
             }
 
-            f_close (&file);
+            f_close (&loopSizeFile);
+            f_close (&loopFile);
         }
     }
 
@@ -429,27 +424,29 @@ void saveLoop()
     FATFS &fs = fsi.GetSDFileSystem();
     if (f_mount (&fs, "/", 0) == FR_OK)
     {
-        auto res = f_open (&file, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE));
-        if (res == FR_OK)
+        auto res1 = f_open (&loopSizeFile, loopSizeFileName, (FA_CREATE_ALWAYS | FA_WRITE));
+        auto res2 = f_open (&loopFile, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE));
+        if (res1 == FR_OK && res2 == FR_OK)
         {
             UINT bytes_written;
 
             //first write the size of the buffer
-            res = f_write (&file, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_written);
-            if (res != FR_OK)
+            res1 = f_write (&loopSizeFile, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_written);
+            if (res1 != FR_OK)
                 pod.seed.PrintLine ("couldn't write cappedRecordingSize to file!!");
 
             //then the buffer itself
-            res = f_write (&file, looperBuffer, cappedRecordingSize, &bytes_written);
-            if (res != FR_OK)
+            res2 = f_write (&loopFile, looperBuffer, cappedRecordingSize, &bytes_written);
+            if (res2 != FR_OK)
                 pod.seed.PrintLine ("couldn't write looperBuffer to file!!");
-
-            f_close (&file);
         }
         else
         {
             pod.seed.PrintLine ("couldn't open file to write into it!!");
         }
+
+        f_close (&loopSizeFile);
+        f_close (&loopFile);
     }
 }
 
