@@ -51,7 +51,7 @@ constexpr auto inputDetectionThreshold = .025f;
 
 //file saving
 std::atomic<bool> needToSave { false };
-constexpr const char* loopFileName { "savedLoop.wav" };
+constexpr const char* loopFileName { "savedLoop2.dat" };
 
 #define TEST_FILE_NAME "SdCardWriteAndRead.txt"
 #define TEST_FILE_CONTENTS \
@@ -394,14 +394,25 @@ void RestoreLoopIfItExists()
         {
             //and we successfully read its content into looperBuffer
             UINT bytes_read;
-            //TODO: LOL, we need to save the cappedRecordingSize somewhere, otherwise after a restart it'll have the default value
-            auto res = f_read (&file, looperBuffer, cappedRecordingSize, &bytes_read);
+
+            auto res = f_read (&file, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_read);
+            if (res != FR_OK)
+            {
+                pod.seed.PrintLine ("couldn't read cappedRecordingSize from file!!");
+                return;
+            }
+
+            res = f_read (&file, looperBuffer, cappedRecordingSize, &bytes_read);
             if (res == FR_OK)
             {
                 //set our state correctly as being fully loaded
                 needToReset = false;
                 numRecordedSamples = bytes_read;
                 StopRecording();
+            }
+            else
+            {
+                pod.seed.PrintLine ("couldn't read looperBuffer from file!!");
             }
 
             f_close (&file);
@@ -422,14 +433,23 @@ void saveLoop()
         if (res == FR_OK)
         {
             UINT bytes_written;
+
+            //first write the size of the buffer
+            res = f_write (&file, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_written);
+            if (res != FR_OK)
+                pod.seed.PrintLine ("couldn't write cappedRecordingSize to file!!");
+
+            //then the buffer itself
             res = f_write (&file, looperBuffer, cappedRecordingSize, &bytes_written);
             if (res != FR_OK)
-                pod.seed.PrintLine ("couldn't write to file!!");
+                pod.seed.PrintLine ("couldn't write looperBuffer to file!!");
 
             f_close (&file);
         }
         else
+        {
             pod.seed.PrintLine ("couldn't open file to write into it!!");
+        }
     }
 }
 
