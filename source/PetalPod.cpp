@@ -6,13 +6,15 @@
 
 daisy::DaisyPod pod;
 
+#define ENABLE_INPUT_DETECTION 1
+
 //looper things
 constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
 constexpr auto fadeOutLength        = 1000;           // the number of samples at the end of the loop where we apply a linear fade out
 bool           isFirstLoop          = true;           // the first loop will set the length for the buffer
-bool           isWaitingForInput    = false;
 bool           isCurrentlyRecording = false;
 bool           isCurrentlyPlaying   = false;
+bool           couldBeReset         = false;
 
 float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
 int                 positionInLooperBuffer = 0;
@@ -41,10 +43,13 @@ float currentDelay, feedback, delayTarget, cutoff;
 int   crushmod, crushcount;
 float crushsl, crushsr, drywet;
 
+#if ENABLE_INPUT_DETECTION
 //input detection
+bool           isWaitingForInput    = false;
 bool           gotPreviousSample       = false;
 float          previousSample          = -1000.f;
 constexpr auto inputDetectionThreshold = .025f;
+#endif
 
 //file saving
 std::atomic<bool> needToSave { false };
@@ -57,12 +62,14 @@ FIL loopFile;
 
 void ResetLooperState()
 {
-    isFirstLoop          = true; // the first loop will set the length for the buffer
-    isWaitingForInput    = false;
+    isFirstLoop = true; // the first loop will set the length for the buffer
     isCurrentlyRecording = false;
     isCurrentlyPlaying   = false;
 
+#if ENABLE_INPUT_DETECTION
+    isWaitingForInput = false;
     gotPreviousSample = false;
+#endif
     positionInLooperBuffer = 0;
     numRecordedSamples     = 0;
 
@@ -176,11 +183,17 @@ void UpdateButtons()
             //button 1 pressed for the first time, we wait for input
             if (! isCurrentlyRecording)
             {
+#if ENABLE_INPUT_DETECTION
                 isWaitingForInput = true;
+#else
+                isCurrentlyPlaying   = true;
+                isCurrentlyRecording = true;
+#endif
             }
             //button 1 pressed for the second time
             else
             {
+#if ENABLE_INPUT_DETECTION
                 //we never detected any input so we didn't record anything
                 if (isWaitingForInput)
                 {
@@ -188,6 +201,7 @@ void UpdateButtons()
                 }
                 //we did record something
                 else
+#endif
                 {
                     StopRecording();
                     FadeOutLooperBuffer();
@@ -202,10 +216,11 @@ void UpdateButtons()
     }
 
     //button 1 held
-    if (pod.button1.TimeHeldMs() >= 1000)
+    if (pod.button1.TimeHeldMs() >= 1000 && couldBeReset)
     {
         ResetLooperState();
         DeleteSavedFile();
+        couldBeReset = false;
     }
 }
 
@@ -323,24 +338,29 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     daisy::AudioHandle::InterleavingOutputBuffer outputBuffer,
                     size_t                                       numSamples)
 {
+#if ENABLE_INPUT_DETECTION
     if (! gotPreviousSample && numSamples > 0)
     {
         previousSample = inputBuffer[0];
         gotPreviousSample = true;
     }
+#endif
 
     ProcessControls();
 
     float outputLeft, outputRight, inputLeft, inputRight;
     for (size_t curSample = 0; curSample < numSamples; curSample += 2)
     {
+#if ENABLE_INPUT_DETECTION
         if (isWaitingForInput && std::abs (outputBuffer[curSample] - previousSample) > inputDetectionThreshold)
         {
             //TODO: setting currently playing here is needed to have GetLooperSample call ++positionInLooperBuffer, but i think we can probably use some other bool or rename this one
             isCurrentlyPlaying   = true;
             isCurrentlyRecording = true;
             isWaitingForInput    = false;
+            couldBeReset         = true;
         }
+#endif
 
         //get looper output
         const auto looperOutput { GetLooperSample (inputBuffer, curSample) };
@@ -362,7 +382,9 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
         outputBuffer[curSample]     = outputLeft;
         outputBuffer[curSample + 1] = outputRight;
 
+#if ENABLE_INPUT_DETECTION
         previousSample = outputBuffer[curSample];
+#endif
     }
 }
 
