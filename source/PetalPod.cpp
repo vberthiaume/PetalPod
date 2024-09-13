@@ -7,6 +7,7 @@
 daisy::DaisyPod pod;
 
 #define ENABLE_INPUT_DETECTION 1
+#define ENABLE_ALL_EFFECTS 0
 
 //looper things
 constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
@@ -22,6 +23,7 @@ int                 cappedRecordingSize    = maxRecordingSize;
 int                 numRecordedSamples     = 0;
 
 //effect things
+#if ENABLE_ALL_EFFECTS
 constexpr size_t maxDelayTime{static_cast<size_t> (48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
 
 enum fxMode
@@ -41,7 +43,8 @@ int                                                   curFxMode = fxMode::reverb
 
 float currentDelay, feedback, delayTarget, cutoff;
 int   crushmod, crushcount;
-float crushsl, crushsr, drywet;
+#endif
+float crushsl, crushsr, drywet = 1.f;
 
 #if ENABLE_INPUT_DETECTION
 //input detection
@@ -52,14 +55,15 @@ constexpr auto inputDetectionThreshold = .025f;
 #endif
 
 //file saving
-std::atomic<bool> needToSave { false };
-std::atomic<bool> needToDelete { false };
-daisy::SdmmcHandler sdmmc;
+std::atomic<bool>     needToSave{false};
+std::atomic<bool>     needToDelete{false};
+std::atomic<bool>     needToPrintLoopBuffer{false};
+daisy::SdmmcHandler   sdmmc;
 daisy::FatFSInterface fsi;
-constexpr const char* loopSizeFileName { "loopSize.dat" };
-FIL loopSizeFile;
-constexpr const char* loopFileName { "loop.wav" };
-FIL loopFile;
+constexpr const char *loopSizeFileName{"loopSize.dat"};
+FIL                   loopSizeFile;
+constexpr const char *loopFileName{"loop.wav"};
+FIL                   loopFile;
 
 void ResetLooperState()
 {
@@ -80,6 +84,7 @@ void ResetLooperState()
     cappedRecordingSize = maxRecordingSize;
 }
 
+# if ENABLE_ALL_EFFECTS
 void GetReverbSample (float &outl, float &outr, float inl, float inr)
 {
     reverbSC.Process (inl, inr, &outl, &outr);
@@ -114,7 +119,7 @@ void GetCrushSample (float &outl, float &outr, float inl, float inr)
     outl = tone.Process (crushsl);
     outr = tone.Process (crushsr);
 }
-
+#endif
 void FadeOutLooperBuffer()
 {
     const auto diff          = cappedRecordingSize - fadeOutLength;
@@ -195,6 +200,7 @@ void UpdateButtons()
     }
 }
 
+# if ENABLE_ALL_EFFECTS
 void UpdateEffectKnobs (float &k1, float &k2)
 {
     drywet = pod.knob1.Process();
@@ -227,7 +233,7 @@ void UpdateEncoder()
     //TODO: pushing the encoder should do something
     // if (pod.encoder.RisingEdge())
 }
-
+#endif
 void UpdateLeds (float k1, float k2)
 {
     //led1 is red when recording, green when playing, off otherwise
@@ -242,28 +248,31 @@ void UpdateLeds (float k1, float k2)
         led1Color.Init (255, 255, 0); // yellow
     pod.led1.SetColor (led1Color);
 
+# if ENABLE_ALL_EFFECTS
     //led 2 reflects the effect parameter
     pod.led2.Set (k2 * (curFxMode == 2), k2 * (curFxMode == 1), k2 * (curFxMode == 0 || curFxMode == 2));
-
+#endif
     pod.UpdateLeds();
 }
 
 void ProcessControls()
 {
     float k1, k2;
+    # if ENABLE_ALL_EFFECTS
     delayTarget = 0;
     feedback = 0;
     drywet = 0;
+    #endif
 
     pod.ProcessAnalogControls();
     pod.ProcessDigitalControls();
 
     UpdateButtons();
-
+# if ENABLE_ALL_EFFECTS
     UpdateEffectKnobs (k1, k2);
 
     UpdateEncoder();
-
+#endif
     UpdateLeds (k1, k2);
 }
 
@@ -342,17 +351,18 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
         inputLeft = outputBuffer[curSample];
         inputRight = outputBuffer[curSample + 1];
 
+#if ENABLE_ALL_EFFECTS
         switch (curFxMode)
         {
-            case fxMode::reverb: GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
             case fxMode::delay: GetDelaySample (outputLeft, outputRight, inputLeft, inputRight); break;
             case fxMode::crush: GetCrushSample (outputLeft, outputRight, inputLeft, inputRight); break;
+            case fxMode::reverb: GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
             default: outputLeft = outputRight = 0;
         }
 
         outputBuffer[curSample]     = outputLeft;
         outputBuffer[curSample + 1] = outputRight;
-
+#endif
 #if ENABLE_INPUT_DETECTION
         previousSample = outputBuffer[curSample];
 #endif
@@ -390,6 +400,8 @@ void RestoreLoopIfItExists()
                     res = f_read (&loopFile, looperBuffer, cappedRecordingSize, &bytes_read);
                     if (res == FR_OK && bytes_read == cappedRecordingSize)
                     {
+                        needToPrintLoopBuffer.store (true);
+
                         //we loaded the loop properly -- set our state as such
                         loopWasLoaded      = true;
                         numRecordedSamples = bytes_read;
@@ -434,7 +446,9 @@ void saveLoop()
 
             //then the buffer itself
             res2 = f_write (&loopFile, looperBuffer, cappedRecordingSize, &bytes_written);
-            if (res2 != FR_OK)
+            if (res2 == FR_OK)
+                needToPrintLoopBuffer.store (true);
+            else
                 pod.seed.PrintLine ("couldn't write looperBuffer to file!!");
         }
         else
@@ -452,10 +466,11 @@ int main (void)
     //initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
-    pod.seed.StartLog ();
+    pod.seed.StartLog (true);
 
     RestoreLoopIfItExists();
 
+# if ENABLE_ALL_EFFECTS
     //init everything related to effects
     float sample_rate = pod.AudioSampleRate();
     reverbSC.Init (sample_rate);
@@ -476,7 +491,7 @@ int main (void)
     currentDelay = delayTarget = sample_rate * 0.75f;
     leftDelay.SetDelay (currentDelay);
     rightDelay.SetDelay (currentDelay);
-
+#endif
     //start audio
     pod.StartAdc();
     pod.StartAudio (AudioCallback);
@@ -499,6 +514,15 @@ int main (void)
             f_unlink (loopSizeFileName);
             f_unlink (loopFileName);
             needToDelete.store (false);
+        }
+
+        if (needToPrintLoopBuffer.load())
+        {
+            pod.seed.PrintLine ("here's the buffer:");
+            for (int i = 0; i < cappedRecordingSize; ++i)
+                PrintFloat(pod.seed, looperBuffer[i]);
+
+            needToPrintLoopBuffer.store (false);
         }
 
         // PrintFloat (pod.seed, "dry wet", drywet, 3);

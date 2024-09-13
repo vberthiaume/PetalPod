@@ -9,6 +9,14 @@ inline void PrintFloat (daisy::DaisySeed& seed, const char *text, float value, i
     seed.PrintLine ("%s: %d.%d", text, wholeValue, fractionalValue);
 }
 
+inline void PrintFloat (daisy::DaisySeed& seed, float value)
+{
+    const auto wholeValue{static_cast<int> (value)};
+    const auto decimalPlaces {3};
+    const auto fractionalValue{static_cast<int> (static_cast<float> (std::pow (10, decimalPlaces)) * (value - static_cast<float> (wholeValue)))};
+    seed.Print ("%d.%d ", wholeValue, fractionalValue);
+}
+
 /** Remaps a value from a source range to a target range. */
 template <typename Type>
 Type jmap (Type sourceValue, Type sourceRangeMin, Type sourceRangeMax, Type targetRangeMin, Type targetRangeMax)
