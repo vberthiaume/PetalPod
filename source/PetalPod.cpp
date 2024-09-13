@@ -56,9 +56,9 @@ std::atomic<bool> needToSave { false };
 std::atomic<bool> needToDelete { false };
 daisy::SdmmcHandler sdmmc;
 daisy::FatFSInterface fsi;
-constexpr const char* loopSizeFileName { "loopSize4.dat" };
+constexpr const char* loopSizeFileName { "loopSize.dat" };
 FIL loopSizeFile;
-constexpr const char* loopFileName { "savedLoop4.wav" };
+constexpr const char* loopFileName { "loop.wav" };
 FIL loopFile;
 
 void ResetLooperState()
@@ -175,6 +175,7 @@ void UpdateButtons()
                 {
                     StopRecording();
                     FadeOutLooperBuffer();
+                    needToSave.store (true);    //trigger a save in the main loop, you can't do file operations in the audio thread
                 }
             }
         }
@@ -223,9 +224,8 @@ void UpdateEncoder()
     curFxMode = curFxMode + pod.encoder.Increment();
     curFxMode = (curFxMode % fxMode::total + fxMode::total) % fxMode::total;
 
-    //pusing the encoder saves the current loop to file
-    if (pod.encoder.RisingEdge())
-        needToSave.store (true);
+    //TODO: pushing the encoder should do something
+    // if (pod.encoder.RisingEdge())
 }
 
 void UpdateLeds (float k1, float k2)
@@ -238,6 +238,8 @@ void UpdateLeds (float k1, float k2)
         led1Color.Init (daisy::Color::RED);
     else if (isCurrentlyPlaying)
         led1Color.Init (daisy::Color::GREEN);
+    else if (isWaitingForInput)
+        led1Color.Init (255, 255, 0); // yellow
     pod.led1.SetColor (led1Color);
 
     //led 2 reflects the effect parameter
