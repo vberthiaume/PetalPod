@@ -1,6 +1,3 @@
-//I shouldn't need to include this, but not having it causes vscode to think it's missing
-#define USE_DAISYSP_LGPL 1
-
 #include "daisysp.h"
 #include "helper.hpp"
 #include "fatfs.h"
@@ -53,17 +50,19 @@ constexpr auto inputDetectionThreshold = .025f;
 std::atomic<bool> needToSave { false };
 daisy::SdmmcHandler sdmmc;
 daisy::FatFSInterface fsi;
-constexpr const char* loopSizeFileName { "loopSize.dat" };
+constexpr const char* loopSizeFileName { "loopSize4.dat" };
 FIL loopSizeFile;
-constexpr const char* loopFileName { "savedLoop3.wav" };
+constexpr const char* loopFileName { "savedLoop4.wav" };
 FIL loopFile;
 
 void ResetLooperState()
 {
-    isWaitingForInput      = false;
-    isCurrentlyPlaying     = false;
-    isCurrentlyRecording   = false;
-    isFirstLoop            = true;
+    isFirstLoop          = true; // the first loop will set the length for the buffer
+    isWaitingForInput    = false;
+    isCurrentlyRecording = false;
+    isCurrentlyPlaying   = false;
+
+    gotPreviousSample = false;
     positionInLooperBuffer = 0;
     numRecordedSamples     = 0;
 
@@ -163,7 +162,8 @@ void UpdateButtonsOldRecordWhileHolding()
 
 void DeleteSavedFile()
 {
-
+    // f_unlink (loopSizeFileName);
+    // f_unlink (loopFileName);
 }
 
 void UpdateButtons()
@@ -324,7 +324,10 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     size_t                                       numSamples)
 {
     if (! gotPreviousSample && numSamples > 0)
+    {
         previousSample = inputBuffer[0];
+        gotPreviousSample = true;
+    }
 
     ProcessControls();
 

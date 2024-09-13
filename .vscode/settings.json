@@ -71,7 +71,9 @@
         "usbh_conf.h": "c",
         "bitset": "cpp",
         "ranges": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "diskio.h": "c",
+        "ff.h": "c"
     },
     "editor.tokenColorCustomizations": {
         "textMateRules": [
