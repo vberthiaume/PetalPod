@@ -7,7 +7,9 @@
 daisy::DaisyPod pod;
 
 #define ENABLE_INPUT_DETECTION 1
-#define ENABLE_ALL_EFFECTS 0
+#define ENABLE_ALL_EFFECTS 1
+#define SAVE_DATA_PATTERN_INSTEAD_OF_LOOP 0
+#define PRINT_STUFF 0
 
 //looper things
 constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
@@ -57,7 +59,9 @@ constexpr auto inputDetectionThreshold = .025f;
 //file saving
 std::atomic<bool>     needToSave{false};
 std::atomic<bool>     needToDelete{false};
+#if PRINT_STUFF
 std::atomic<bool>     needToPrintLoopBuffer{false};
+#endif
 daisy::SdmmcHandler   sdmmc;
 daisy::FatFSInterface fsi;
 constexpr const char *loopSizeFileName{"loopSize.dat"};
@@ -400,7 +404,9 @@ void RestoreLoopIfItExists()
                     res = f_read (&loopFile, looperBuffer, cappedRecordingSize, &bytes_read);
                     if (res == FR_OK && bytes_read == cappedRecordingSize)
                     {
+                        #if PRINT_STUFF
                         needToPrintLoopBuffer.store (true);
+                        #endif
 
                         //we loaded the loop properly -- set our state as such
                         loopWasLoaded      = true;
@@ -439,6 +445,12 @@ void saveLoop()
         {
             UINT bytes_written;
 
+#if SAVE_DATA_PATTERN_INSTEAD_OF_LOOP
+            cappedRecordingSize = 20;
+            for (int i = 0; i < cappedRecordingSize; ++i)
+                looperBuffer[i] = i + .5f;
+#endif
+
             //first write the size of the buffer
             res1 = f_write (&loopSizeFile, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_written);
             if (res1 != FR_OK)
@@ -447,7 +459,11 @@ void saveLoop()
             //then the buffer itself
             res2 = f_write (&loopFile, looperBuffer, cappedRecordingSize, &bytes_written);
             if (res2 == FR_OK)
+#if PRINT_STUFF
                 needToPrintLoopBuffer.store (true);
+#else
+                ;
+#endif
             else
                 pod.seed.PrintLine ("couldn't write looperBuffer to file!!");
         }
@@ -516,6 +532,7 @@ int main (void)
             needToDelete.store (false);
         }
 
+#if PRINT_STUFF
         if (needToPrintLoopBuffer.load())
         {
             pod.seed.PrintLine ("here's the buffer:");
@@ -524,6 +541,7 @@ int main (void)
 
             needToPrintLoopBuffer.store (false);
         }
+#endif
 
         // PrintFloat (pod.seed, "dry wet", drywet, 3);
 
