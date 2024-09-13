@@ -53,6 +53,7 @@ constexpr auto inputDetectionThreshold = .025f;
 
 //file saving
 std::atomic<bool> needToSave { false };
+std::atomic<bool> needToDelete { false };
 daisy::SdmmcHandler sdmmc;
 daisy::FatFSInterface fsi;
 constexpr const char* loopSizeFileName { "loopSize4.dat" };
@@ -135,42 +136,11 @@ void FadeOutLooperBuffer()
 void StopRecording()
 {
     //stop recording, set the loop length and fade out buffer
+    couldBeReset         = true;
     isCurrentlyRecording = false;
     isFirstLoop          = false;
     cappedRecordingSize  = numRecordedSamples;
     numRecordedSamples   = 0;
-}
-
-void UpdateButtonsOldRecordWhileHolding()
-{
-    //button 1 just started to be held button: start recording
-    if (pod.button1.RisingEdge())
-    {
-        isCurrentlyPlaying   = true;
-        // isCurrentlyRecording = true;
-    }
-
-    //button 1 was just released: stop recording
-    if (pod.button1.FallingEdge())
-    {
-        if (isFirstLoop && isCurrentlyRecording) //we were recording the first loop and now it stopped
-        {
-            //so set the loop length
-            isFirstLoop         = false;
-            cappedRecordingSize = numRecordedSamples;
-            numRecordedSamples  = 0;
-
-            FadeOutLooperBuffer();
-        }
-
-        isCurrentlyRecording = false;
-    }
-}
-
-void DeleteSavedFile()
-{
-    // f_unlink (loopSizeFileName);
-    // f_unlink (loopFileName);
 }
 
 void UpdateButtons()
@@ -219,7 +189,7 @@ void UpdateButtons()
     if (pod.button1.TimeHeldMs() >= 1000 && couldBeReset)
     {
         ResetLooperState();
-        DeleteSavedFile();
+        needToDelete.store (true);
         couldBeReset = false;
     }
 }
@@ -358,7 +328,6 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
             isCurrentlyPlaying   = true;
             isCurrentlyRecording = true;
             isWaitingForInput    = false;
-            couldBeReset         = true;
         }
 #endif
 
@@ -402,36 +371,37 @@ void RestoreLoopIfItExists()
     FATFS& fs = fsi.GetSDFileSystem();
 
     // mount the filesystem to the root directory
-    bool needToReset = true;
+    bool loopWasLoaded = false;
     if (f_mount (&fs, "/", 0) == FR_OK)
     {
         //if loopSizeFile exists
         if (f_open (&loopSizeFile, loopSizeFileName, FA_READ) == FR_OK)
         {
+            //attempt to read the cappedRecordingSize from the loopSizeFile
             UINT bytes_read;
-            //read cappedRecordingSize from the loopSizeFile
             auto res = f_read (&loopSizeFile, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_read);
-            if (res != FR_OK)
+            if (res == FR_OK && bytes_read == sizeof (cappedRecordingSize))
+            {
+                //then attempt to open and read cappedRecordingSize bytes into the looperBuffer from the loopFile
+                if (f_open (&loopFile, loopFileName, FA_READ) == FR_OK)
+                {
+                    res = f_read (&loopFile, looperBuffer, cappedRecordingSize, &bytes_read);
+                    if (res == FR_OK && bytes_read == cappedRecordingSize)
+                    {
+                        //we loaded the loop properly -- set our state as such
+                        loopWasLoaded      = true;
+                        numRecordedSamples = bytes_read;
+                        StopRecording();
+                    }
+                    else
+                    {
+                        pod.seed.PrintLine ("couldn't read looperBuffer from file!!");
+                    }
+                }
+            }
+            else
             {
                 pod.seed.PrintLine ("couldn't read cappedRecordingSize from file!!");
-                return;
-            }
-
-            //then open the loopFile and try to read cappedRecordingSize bytes from it into the looperBuffer
-            if (f_open (&loopFile, loopFileName, FA_READ) == FR_OK)
-            {
-                res = f_read (&loopFile, looperBuffer, cappedRecordingSize, &bytes_read);
-                if (res == FR_OK)
-                {
-                    //set our state correctly as being fully loaded
-                    needToReset        = false;
-                    numRecordedSamples = bytes_read;
-                    StopRecording();
-                }
-                else
-                {
-                    pod.seed.PrintLine ("couldn't read looperBuffer from file!!");
-                }
             }
 
             f_close (&loopSizeFile);
@@ -439,8 +409,8 @@ void RestoreLoopIfItExists()
         }
     }
 
-    //reset everything if there was no saved file, or there was an error
-    if (needToReset)
+    //reset everything if we did not load a loop, either because there was none saved or because of another error
+    if (! loopWasLoaded)
         ResetLooperState();
 }
 
@@ -520,6 +490,13 @@ int main (void)
         {
             saveLoop();
             needToSave.store (false);
+        }
+
+        if (needToDelete.load())
+        {
+            f_unlink (loopSizeFileName);
+            f_unlink (loopFileName);
+            needToDelete.store (false);
         }
 
         // PrintFloat (pod.seed, "dry wet", drywet, 3);
