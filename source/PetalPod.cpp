@@ -6,6 +6,7 @@
 
 daisy::DaisyPod pod;
 
+#define WAIT_FOR_SERIAL_MONITOR 1
 #define ENABLE_INPUT_DETECTION 1
 #define ENABLE_ALL_EFFECTS 1
 #define SAVE_DATA_PATTERN_INSTEAD_OF_LOOP 0
@@ -401,8 +402,10 @@ void RestoreLoopIfItExists()
                 //then attempt to open and read cappedRecordingSize bytes into the looperBuffer from the loopFile
                 if (f_open (&loopFile, loopFileName, FA_READ) == FR_OK)
                 {
-                    res = f_read (&loopFile, looperBuffer, cappedRecordingSize, &bytes_read);
-                    if (res == FR_OK && bytes_read == cappedRecordingSize)
+                    const auto numBytesToRead = cappedRecordingSize * sizeof (float);
+                    //TODO: read the max num of samples but use bytes_read/sizeof (float) as the actual number of samples
+                    res = f_read (&loopFile, looperBuffer, numBytesToRead, &bytes_read);
+                    if (res == FR_OK && bytes_read == numBytesToRead)
                     {
                         #if PRINT_STUFF
                         needToPrintLoopBuffer.store (true);
@@ -410,7 +413,7 @@ void RestoreLoopIfItExists()
 
                         //we loaded the loop properly -- set our state as such
                         loopWasLoaded      = true;
-                        numRecordedSamples = bytes_read;
+                        numRecordedSamples = cappedRecordingSize;
                         StopRecording();
                     }
                     else
@@ -446,7 +449,7 @@ void saveLoop()
             UINT bytes_written;
 
 #if SAVE_DATA_PATTERN_INSTEAD_OF_LOOP
-            cappedRecordingSize = 20;
+            cappedRecordingSize = 12;
             for (int i = 0; i < cappedRecordingSize; ++i)
                 looperBuffer[i] = i + .5f;
 #endif
@@ -457,7 +460,7 @@ void saveLoop()
                 pod.seed.PrintLine ("couldn't write cappedRecordingSize to file!!");
 
             //then the buffer itself
-            res2 = f_write (&loopFile, looperBuffer, cappedRecordingSize, &bytes_written);
+            res2 = f_write (&loopFile, looperBuffer, cappedRecordingSize * sizeof (float), &bytes_written);
             if (res2 == FR_OK)
 #if PRINT_STUFF
                 needToPrintLoopBuffer.store (true);
@@ -482,7 +485,11 @@ int main (void)
     //initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
+#if WAIT_FOR_SERIAL_MONITOR
     pod.seed.StartLog (true);
+#else
+    pod.seed.StartLog ();
+#endif
 
     RestoreLoopIfItExists();
 
