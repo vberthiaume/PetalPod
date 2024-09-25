@@ -2,6 +2,7 @@
 
 #include "daisy_pod.h"
 
+//TODO: have the implementation in a cpp file and remove inline to see if that reduces code size, I'm sure it does
 inline void PrintFloat (daisy::DaisySeed& seed, const char *text, float value, int decimalPlaces)
 {
     const auto wholeValue{static_cast<int> (value)};

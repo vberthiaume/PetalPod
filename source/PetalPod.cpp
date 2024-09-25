@@ -9,7 +9,6 @@ daisy::DaisyPod pod;
 #define WAIT_FOR_SERIAL_MONITOR 0
 #define ENABLE_INPUT_DETECTION 1
 #define ENABLE_ALL_EFFECTS 1
-#define SAVE_DATA_PATTERN_INSTEAD_OF_LOOP 0
 
 //looper things
 constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
@@ -68,13 +67,13 @@ FIL                   loopFile;
 
 void ResetLooperState()
 {
-    isFirstLoop = true; // the first loop will set the length for the buffer
+    isFirstLoop          = true; // the first loop will set the length for the buffer
     isCurrentlyRecording = false;
     isCurrentlyPlaying   = false;
 
 #if ENABLE_INPUT_DETECTION
-    isWaitingForInput = false;
-    gotPreviousSample = false;
+    isWaitingForInput    = false;
+    gotPreviousSample    = false;
 #endif
     positionInLooperBuffer = 0;
     numRecordedSamples     = 0;
@@ -85,7 +84,7 @@ void ResetLooperState()
     cappedRecordingSize = maxRecordingSize;
 }
 
-# if ENABLE_ALL_EFFECTS
+#if ENABLE_ALL_EFFECTS
 void GetReverbSample (float &outl, float &outr, float inl, float inr)
 {
     reverbSC.Process (inl, inr, &outl, &outr);
@@ -121,6 +120,7 @@ void GetCrushSample (float &outl, float &outr, float inl, float inr)
     outr = tone.Process (crushsr);
 }
 #endif
+
 void FadeOutLooperBuffer()
 {
     const auto diff          = cappedRecordingSize - fadeOutLength;
@@ -130,9 +130,6 @@ void FadeOutLooperBuffer()
         //map i values to a ramp that goes from 0 to 1
         const auto ramp = jmap (static_cast<float> (i), static_cast<float> (cappedRecordingSize),
                                 static_cast<float> (cappedRecordingSize - actualFadeOut), 0.f, 1.f);
-
-        //can't print from the audio thread/callback
-        // PrintFloat (pod.seed, "ramp", ramp, 2);
 
         //ramp out looper buffer
         looperBuffer[i] *= ramp;
@@ -201,7 +198,7 @@ void UpdateButtons()
     }
 }
 
-# if ENABLE_ALL_EFFECTS
+#if ENABLE_ALL_EFFECTS
 void UpdateEffectKnobs (float &k1, float &k2)
 {
     drywet = pod.knob1.Process();
@@ -249,7 +246,7 @@ void UpdateLeds (float k1, float k2)
         led1Color.Init (255, 255, 0); // yellow
     pod.led1.SetColor (led1Color);
 
-# if ENABLE_ALL_EFFECTS
+#if ENABLE_ALL_EFFECTS
     //led 2 reflects the effect parameter
     pod.led2.Set (k2 * (curFxMode == 2), k2 * (curFxMode == 1), k2 * (curFxMode == 0 || curFxMode == 2));
 #endif
@@ -259,19 +256,18 @@ void UpdateLeds (float k1, float k2)
 void ProcessControls()
 {
     float k1, k2;
-    # if ENABLE_ALL_EFFECTS
+#if ENABLE_ALL_EFFECTS
     delayTarget = 0;
     feedback = 0;
     drywet = 0;
-    #endif
+#endif
 
     pod.ProcessAnalogControls();
     pod.ProcessDigitalControls();
 
     UpdateButtons();
-# if ENABLE_ALL_EFFECTS
+#if ENABLE_ALL_EFFECTS
     UpdateEffectKnobs (k1, k2);
-
     UpdateEncoder();
 #endif
     UpdateLeds (k1, k2);
@@ -438,15 +434,8 @@ void saveLoop()
         auto res2 = f_open (&loopFile, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE));
         if (res1 == FR_OK && res2 == FR_OK)
         {
-            UINT bytes_written;
-
-#if SAVE_DATA_PATTERN_INSTEAD_OF_LOOP
-            cappedRecordingSize = 12;
-            for (int i = 0; i < cappedRecordingSize; ++i)
-                looperBuffer[i] = i + .5f;
-#endif
-
             //first write the size of the buffer
+            UINT bytes_written;
             res1 = f_write (&loopSizeFile, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_written);
             if (res1 != FR_OK)
                 pod.seed.PrintLine ("couldn't write cappedRecordingSize to file!!");
@@ -479,7 +468,7 @@ int main (void)
 
     RestoreLoopIfItExists();
 
-# if ENABLE_ALL_EFFECTS
+#if ENABLE_ALL_EFFECTS
     //init everything related to effects
     float sample_rate = pod.AudioSampleRate();
     reverbSC.Init (sample_rate);
