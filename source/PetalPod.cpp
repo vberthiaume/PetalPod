@@ -9,6 +9,7 @@ daisy::DaisyPod pod;
 #define WAIT_FOR_SERIAL_MONITOR 0
 #define ENABLE_INPUT_DETECTION 1
 #define ENABLE_ALL_EFFECTS 1
+#define USE_LOOP_SIZE_FILE 1
 
 //looper things
 constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
@@ -60,8 +61,10 @@ std::atomic<bool>     needToSave { false };
 std::atomic<bool>     needToDelete { false };
 daisy::SdmmcHandler   sdmmc;
 daisy::FatFSInterface fsi;
+#if USE_LOOP_SIZE_FILE
 constexpr const char *loopSizeFileName { "loopSize.dat" };
 FIL                   loopSizeFile;
+#endif
 constexpr const char *loopFileName { "loop.wav" };
 FIL                   loopFile;
 
@@ -383,6 +386,29 @@ void RestoreLoopIfItExists()
     bool loopWasLoaded = false;
     if (f_mount (&fs, "/", 0) == FR_OK)
     {
+#if ! USE_LOOP_SIZE_FILE
+        //then attempt to open and read cappedRecordingSize bytes into the looperBuffer from the loopFile
+        if (f_open (&loopFile, loopFileName, FA_READ) == FR_OK)
+        {
+            //attempt to read up to the maxRecordingSize, but the actual bytes_read will tell us the length of the loop
+            UINT bytes_read;
+            const auto res = f_read (&loopFile, looperBuffer, maxRecordingSize, &bytes_read);
+            if (res == FR_OK)
+            {
+                //we loaded the loop properly -- set our state as such
+                loopWasLoaded       = true;
+                cappedRecordingSize = bytes_read;
+                numRecordedSamples  = cappedRecordingSize;
+                StopRecording();
+            }
+            else
+            {
+                pod.seed.PrintLine ("couldn't read looperBuffer from file!!");
+            }
+        }
+
+        f_close (&loopFile);
+#else
         //if loopSizeFile exists
         if (f_open (&loopSizeFile, loopSizeFileName, FA_READ) == FR_OK)
         {
@@ -418,6 +444,7 @@ void RestoreLoopIfItExists()
             f_close (&loopSizeFile);
             f_close (&loopFile);
         }
+#endif
     }
 
     //reset everything if we did not load a loop, either because there was none saved or because of another error
@@ -430,16 +457,23 @@ void saveLoop()
     FATFS &fs = fsi.GetSDFileSystem();
     if (f_mount (&fs, "/", 0) == FR_OK)
     {
+#if USE_LOOP_SIZE_FILE
         auto res1 = f_open (&loopSizeFile, loopSizeFileName, (FA_CREATE_ALWAYS | FA_WRITE));
+#endif
         auto res2 = f_open (&loopFile, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE));
-        if (res1 == FR_OK && res2 == FR_OK)
+        if (
+#if USE_LOOP_SIZE_FILE
+            res1 == FR_OK &&
+#endif
+            res2 == FR_OK)
         {
             //first write the size of the buffer
             UINT bytes_written;
+#if USE_LOOP_SIZE_FILE
             res1 = f_write (&loopSizeFile, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_written);
             if (res1 != FR_OK)
                 pod.seed.PrintLine ("couldn't write cappedRecordingSize to file!!");
-
+#endif
             //then the buffer itself
             res2 = f_write (&loopFile, looperBuffer, cappedRecordingSize * sizeof (float), &bytes_written);
             if (res2 != FR_OK)
@@ -449,8 +483,9 @@ void saveLoop()
         {
             pod.seed.PrintLine ("couldn't open file to write into it!!");
         }
-
+#if USE_LOOP_SIZE_FILE
         f_close (&loopSizeFile);
+#endif
         f_close (&loopFile);
     }
 }
@@ -509,7 +544,9 @@ int main (void)
 
         if (needToDelete.load())
         {
+#if USE_LOOP_SIZE_FILE
             f_unlink (loopSizeFileName);
+#endif
             f_unlink (loopFileName);
             needToDelete.store (false);
         }
