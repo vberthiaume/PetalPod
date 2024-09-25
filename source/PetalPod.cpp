@@ -1,22 +1,30 @@
 #include "daisysp.h"
 #include "helper.hpp"
+#include "fatfs.h"
+
+#include <atomic>
 
 daisy::DaisyPod pod;
 
+#define WAIT_FOR_SERIAL_MONITOR 0
+#define ENABLE_INPUT_DETECTION 1
+#define ENABLE_ALL_EFFECTS 1
+
 //looper things
-constexpr auto maxRecordingSize     = 48000 * 60 * 5; // 5 minutes of floats at 48 khz
+constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
 constexpr auto fadeOutLength        = 1000;           // the number of samples at the end of the loop where we apply a linear fade out
 bool           isFirstLoop          = true;           // the first loop will set the length for the buffer
-bool           isWaitingForInput    = false;
 bool           isCurrentlyRecording = false;
 bool           isCurrentlyPlaying   = false;
+bool           couldBeReset         = false;
 
 float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
 int                 positionInLooperBuffer = 0;
-int                 cappedRecordingSize = maxRecordingSize;
-int                 numRecordedSamples = 0;
+int                 cappedRecordingSize    = maxRecordingSize;
+int                 numRecordedSamples     = 0;
 
 //effect things
+#if ENABLE_ALL_EFFECTS
 constexpr size_t maxDelayTime{static_cast<size_t> (48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
 
 enum fxMode
@@ -36,21 +44,39 @@ int                                                   curFxMode = fxMode::reverb
 
 float currentDelay, feedback, delayTarget, cutoff;
 int   crushmod, crushcount;
-float crushsl, crushsr, drywet;
+#endif
+float crushsl, crushsr, drywet = 1.f;
 
+#if ENABLE_INPUT_DETECTION
 //input detection
+bool           isWaitingForInput    = false;
 bool           gotPreviousSample       = false;
 float          previousSample          = -1000.f;
 constexpr auto inputDetectionThreshold = .025f;
+#endif
+
+//file saving
+std::atomic<bool>     needToSave { false };
+std::atomic<bool>     needToDelete { false };
+daisy::SdmmcHandler   sdmmc;
+daisy::FatFSInterface fsi;
+constexpr const char *loopSizeFileName { "loopSize.dat" };
+FIL                   loopSizeFile;
+constexpr const char *loopFileName { "loop.wav" };
+FIL                   loopFile;
 
 void ResetLooperState()
 {
-    isWaitingForInput    = false;
-    isCurrentlyPlaying   = false;
+    isFirstLoop          = true; // the first loop will set the length for the buffer
     isCurrentlyRecording = false;
-    isFirstLoop          = true;
-    positionInLooperBuffer                  = 0;
-    numRecordedSamples                  = 0;
+    isCurrentlyPlaying   = false;
+
+#if ENABLE_INPUT_DETECTION
+    isWaitingForInput    = false;
+    gotPreviousSample    = false;
+#endif
+    positionInLooperBuffer = 0;
+    numRecordedSamples     = 0;
 
     for (int i = 0; i < cappedRecordingSize; i++)
         looperBuffer[i] = 0;
@@ -58,6 +84,7 @@ void ResetLooperState()
     cappedRecordingSize = maxRecordingSize;
 }
 
+#if ENABLE_ALL_EFFECTS
 void GetReverbSample (float &outl, float &outr, float inl, float inr)
 {
     reverbSC.Process (inl, inr, &outl, &outr);
@@ -92,6 +119,7 @@ void GetCrushSample (float &outl, float &outr, float inl, float inr)
     outl = tone.Process (crushsl);
     outr = tone.Process (crushsr);
 }
+#endif
 
 void FadeOutLooperBuffer()
 {
@@ -103,43 +131,24 @@ void FadeOutLooperBuffer()
         const auto ramp = jmap (static_cast<float> (i), static_cast<float> (cappedRecordingSize),
                                 static_cast<float> (cappedRecordingSize - actualFadeOut), 0.f, 1.f);
 
-        //can't print from the audio thread/callback
-        // PrintFloat (pod.seed, "ramp", ramp, 2);
-
         //ramp out looper buffer
         looperBuffer[i] *= ramp;
     }
 }
 
-#if 0
-void UpdateButtons()
+void StopRecording()
 {
-    //button 1 just started to be held button: start recording
-    if (pod.button1.RisingEdge())
-    {
-        isCurrentlyPlaying   = true;
-        // isCurrentlyRecording = true;
-    }
-
-    //button 1 was just released: stop recording
-    if (pod.button1.FallingEdge())
-    {
-        if (isFirstLoop && isCurrentlyRecording) //we were recording the first loop and now it stopped
-        {
-            //so set the loop length
-            isFirstLoop         = false;
-            cappedRecordingSize = numRecordedSamples;
-            numRecordedSamples  = 0;
-
-            FadeOutLooperBuffer();
-        }
-
-        isCurrentlyRecording = false;
-    }
+    //stop recording, set the loop length and fade out buffer
+    couldBeReset         = true;
+    isCurrentlyRecording = false;
+    isFirstLoop          = false;
+    cappedRecordingSize  = numRecordedSamples;
+    numRecordedSamples   = 0;
 }
-#elif 1
+
 void UpdateButtons()
 {
+    //button 1 pressed
     if (pod.button1.RisingEdge())
     {
         if (isFirstLoop)
@@ -147,11 +156,17 @@ void UpdateButtons()
             //button 1 pressed for the first time, we wait for input
             if (! isCurrentlyRecording)
             {
+#if ENABLE_INPUT_DETECTION
                 isWaitingForInput = true;
+#else
+                isCurrentlyPlaying   = true;
+                isCurrentlyRecording = true;
+#endif
             }
             //button 1 pressed for the second time
             else
             {
+#if ENABLE_INPUT_DETECTION
                 //we never detected any input so we didn't record anything
                 if (isWaitingForInput)
                 {
@@ -159,14 +174,11 @@ void UpdateButtons()
                 }
                 //we did record something
                 else
+#endif
                 {
-                    //stop recording, set the loop length and fade out buffer
-                    isCurrentlyRecording = false;
-                    isFirstLoop          = false;
-                    cappedRecordingSize  = numRecordedSamples;
-                    numRecordedSamples   = 0;
-
+                    StopRecording();
                     FadeOutLooperBuffer();
+                    needToSave.store (true);    //trigger a save in the main loop, you can't do file operations in the audio thread
                 }
             }
         }
@@ -176,42 +188,17 @@ void UpdateButtons()
             isCurrentlyPlaying = ! isCurrentlyPlaying;
         }
     }
-}
-#else
-void UpdateButtons()
-{
-    //button2 pressed
-    if (pod.button2.RisingEdge())
-    {
-        if (isFirstLoop && isCurrentlyRecording) //we were recording the first loop and now it stopped
-        {
-            //so set the loop length
-            isFirstLoop = false;
-            mod         = len;
-            len         = 0;
-        }
 
-        reset                  = true;
-        isCurrentlyPlaying   = true;
-        isCurrentlyRecording = !isCurrentlyRecording;
-    }
-
-    //button2 held
-    if (pod.button2.TimeHeldMs() >= 1000 && reset)
+    //button 1 held
+    if (pod.button1.TimeHeldMs() >= 1000 && couldBeReset)
     {
         ResetLooperState();
-        reset = false;
-    }
-
-    //button1 pressed and not empty buffer
-    if (pod.button1.RisingEdge() && (isCurrentlyRecording || !isFirstLoop))
-    {
-        isCurrentlyPlaying   = !isCurrentlyPlaying;
-        isCurrentlyRecording = false;
+        needToDelete.store (true);
+        couldBeReset = false;
     }
 }
-#endif
 
+#if ENABLE_ALL_EFFECTS
 void UpdateEffectKnobs (float &k1, float &k2)
 {
     drywet = pod.knob1.Process();
@@ -237,11 +224,15 @@ void UpdateEffectKnobs (float &k1, float &k2)
 
 void UpdateEncoder()
 {
+    //rotating the encoder changes the effects
     curFxMode = curFxMode + pod.encoder.Increment();
     curFxMode = (curFxMode % fxMode::total + fxMode::total) % fxMode::total;
-}
 
-void UpdateLeds(float k1, float k2)
+    //TODO: pushing the encoder should do something
+    // if (pod.encoder.RisingEdge())
+}
+#endif
+void UpdateLeds (float k1, float k2)
 {
     //led1 is red when recording, green when playing, off otherwise
     daisy::Color led1Color;
@@ -251,30 +242,34 @@ void UpdateLeds(float k1, float k2)
         led1Color.Init (daisy::Color::RED);
     else if (isCurrentlyPlaying)
         led1Color.Init (daisy::Color::GREEN);
+    else if (isWaitingForInput)
+        led1Color.Init (255, 255, 0); // yellow
     pod.led1.SetColor (led1Color);
 
+#if ENABLE_ALL_EFFECTS
     //led 2 reflects the effect parameter
     pod.led2.Set (k2 * (curFxMode == 2), k2 * (curFxMode == 1), k2 * (curFxMode == 0 || curFxMode == 2));
-
+#endif
     pod.UpdateLeds();
 }
 
 void ProcessControls()
 {
     float k1, k2;
+#if ENABLE_ALL_EFFECTS
     delayTarget = 0;
     feedback = 0;
     drywet = 0;
+#endif
 
     pod.ProcessAnalogControls();
     pod.ProcessDigitalControls();
 
     UpdateButtons();
-
+#if ENABLE_ALL_EFFECTS
     UpdateEffectKnobs (k1, k2);
-
     UpdateEncoder();
-
+#endif
     UpdateLeds (k1, k2);
 }
 
@@ -321,14 +316,20 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
                     daisy::AudioHandle::InterleavingOutputBuffer outputBuffer,
                     size_t                                       numSamples)
 {
+#if ENABLE_INPUT_DETECTION
     if (! gotPreviousSample && numSamples > 0)
+    {
         previousSample = inputBuffer[0];
+        gotPreviousSample = true;
+    }
+#endif
 
     ProcessControls();
 
     float outputLeft, outputRight, inputLeft, inputRight;
     for (size_t curSample = 0; curSample < numSamples; curSample += 2)
     {
+#if ENABLE_INPUT_DETECTION
         if (isWaitingForInput && std::abs (outputBuffer[curSample] - previousSample) > inputDetectionThreshold)
         {
             //TODO: setting currently playing here is needed to have GetLooperSample call ++positionInLooperBuffer, but i think we can probably use some other bool or rename this one
@@ -336,6 +337,7 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
             isCurrentlyRecording = true;
             isWaitingForInput    = false;
         }
+#endif
 
         //get looper output
         const auto looperOutput { GetLooperSample (inputBuffer, curSample) };
@@ -346,18 +348,110 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
         inputLeft = outputBuffer[curSample];
         inputRight = outputBuffer[curSample + 1];
 
+#if ENABLE_ALL_EFFECTS
         switch (curFxMode)
         {
-            case fxMode::reverb: GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
             case fxMode::delay: GetDelaySample (outputLeft, outputRight, inputLeft, inputRight); break;
             case fxMode::crush: GetCrushSample (outputLeft, outputRight, inputLeft, inputRight); break;
+            case fxMode::reverb: GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
             default: outputLeft = outputRight = 0;
         }
 
         outputBuffer[curSample]     = outputLeft;
         outputBuffer[curSample + 1] = outputRight;
-
+#endif
+#if ENABLE_INPUT_DETECTION
         previousSample = outputBuffer[curSample];
+#endif
+    }
+}
+
+void RestoreLoopIfItExists()
+{
+    // Initialize the SDMMC Hardware. For this example we'll use: Medium (25MHz), 4-bit, w/out power save settings
+    daisy::SdmmcHandler::Config sd_cfg;
+    sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
+    sdmmc.Init(sd_cfg);
+
+    // Setup our interface to the FatFS middleware
+    daisy::FatFSInterface::Config fsi_config;
+    fsi_config.media = daisy::FatFSInterface::Config::MEDIA_SD;
+    fsi.Init(fsi_config);
+    FATFS& fs = fsi.GetSDFileSystem();
+
+    // mount the filesystem to the root directory
+    bool loopWasLoaded = false;
+    if (f_mount (&fs, "/", 0) == FR_OK)
+    {
+        //if loopSizeFile exists
+        if (f_open (&loopSizeFile, loopSizeFileName, FA_READ) == FR_OK)
+        {
+            //attempt to read the cappedRecordingSize from the loopSizeFile
+            UINT bytes_read;
+            auto res = f_read (&loopSizeFile, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_read);
+            if (res == FR_OK && bytes_read == sizeof (cappedRecordingSize))
+            {
+                //then attempt to open and read cappedRecordingSize bytes into the looperBuffer from the loopFile
+                if (f_open (&loopFile, loopFileName, FA_READ) == FR_OK)
+                {
+                    const auto numBytesToRead = cappedRecordingSize * sizeof (float);
+                    //TODO: read the max num of samples but use bytes_read/sizeof (float) as the actual number of samples
+                    res = f_read (&loopFile, looperBuffer, numBytesToRead, &bytes_read);
+                    if (res == FR_OK && bytes_read == numBytesToRead)
+                    {
+                        //we loaded the loop properly -- set our state as such
+                        loopWasLoaded      = true;
+                        numRecordedSamples = cappedRecordingSize;
+                        StopRecording();
+                    }
+                    else
+                    {
+                        pod.seed.PrintLine ("couldn't read looperBuffer from file!!");
+                    }
+                }
+            }
+            else
+            {
+                pod.seed.PrintLine ("couldn't read cappedRecordingSize from file!!");
+            }
+
+            f_close (&loopSizeFile);
+            f_close (&loopFile);
+        }
+    }
+
+    //reset everything if we did not load a loop, either because there was none saved or because of another error
+    if (! loopWasLoaded)
+        ResetLooperState();
+}
+
+void saveLoop()
+{
+    FATFS &fs = fsi.GetSDFileSystem();
+    if (f_mount (&fs, "/", 0) == FR_OK)
+    {
+        auto res1 = f_open (&loopSizeFile, loopSizeFileName, (FA_CREATE_ALWAYS | FA_WRITE));
+        auto res2 = f_open (&loopFile, loopFileName, (FA_CREATE_ALWAYS | FA_WRITE));
+        if (res1 == FR_OK && res2 == FR_OK)
+        {
+            //first write the size of the buffer
+            UINT bytes_written;
+            res1 = f_write (&loopSizeFile, &cappedRecordingSize, sizeof (cappedRecordingSize), &bytes_written);
+            if (res1 != FR_OK)
+                pod.seed.PrintLine ("couldn't write cappedRecordingSize to file!!");
+
+            //then the buffer itself
+            res2 = f_write (&loopFile, looperBuffer, cappedRecordingSize * sizeof (float), &bytes_written);
+            if (res2 != FR_OK)
+                pod.seed.PrintLine ("couldn't write looperBuffer to file!!");
+        }
+        else
+        {
+            pod.seed.PrintLine ("couldn't open file to write into it!!");
+        }
+
+        f_close (&loopSizeFile);
+        f_close (&loopFile);
     }
 }
 
@@ -366,10 +460,15 @@ int main (void)
     //initialize pod hardware and logger
     pod.Init();
     pod.SetAudioBlockSize (4); // Set the number of samples processed per channel by the audio callback. Isn't 4 ridiculously low?
-    pod.seed.StartLog();
+#if WAIT_FOR_SERIAL_MONITOR
+    pod.seed.StartLog (true);
+#else
+    pod.seed.StartLog ();
+#endif
 
-    ResetLooperState();
+    RestoreLoopIfItExists();
 
+#if ENABLE_ALL_EFFECTS
     //init everything related to effects
     float sample_rate = pod.AudioSampleRate();
     reverbSC.Init (sample_rate);
@@ -390,7 +489,7 @@ int main (void)
     currentDelay = delayTarget = sample_rate * 0.75f;
     leftDelay.SetDelay (currentDelay);
     rightDelay.SetDelay (currentDelay);
-
+#endif
     //start audio
     pod.StartAdc();
     pod.StartAudio (AudioCallback);
@@ -400,9 +499,22 @@ int main (void)
     {
         // blink the led
         pod.seed.SetLed (led_state);
-        led_state = !led_state;
+        led_state = ! led_state;
 
-        PrintFloat (pod.seed, "dry wet", drywet, 3);
+        if (needToSave.load())
+        {
+            saveLoop();
+            needToSave.store (false);
+        }
+
+        if (needToDelete.load())
+        {
+            f_unlink (loopSizeFileName);
+            f_unlink (loopFileName);
+            needToDelete.store (false);
+        }
+
+        // PrintFloat (pod.seed, "dry wet", drywet, 3);
 
         daisy::System::Delay (1000);
     }
