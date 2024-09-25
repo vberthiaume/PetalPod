@@ -9,7 +9,7 @@ daisy::DaisyPod pod;
 #define WAIT_FOR_SERIAL_MONITOR 0
 #define ENABLE_INPUT_DETECTION 1
 #define ENABLE_ALL_EFFECTS 1
-#define USE_LOOP_SIZE_FILE 1
+#define USE_LOOP_SIZE_FILE 0
 
 //looper things
 constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
@@ -397,7 +397,7 @@ void RestoreLoopIfItExists()
             {
                 //we loaded the loop properly -- set our state as such
                 loopWasLoaded       = true;
-                cappedRecordingSize = bytes_read;
+                cappedRecordingSize = bytes_read / sizeof (float);
                 numRecordedSamples  = cappedRecordingSize;
                 StopRecording();
             }
