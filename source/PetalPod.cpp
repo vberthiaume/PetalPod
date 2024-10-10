@@ -11,7 +11,7 @@ daisy::DaisyPod pod;
 #define ENABLE_ALL_EFFECTS 1
 
 //looper things
-constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
+constexpr auto maxRecordingSize     = 48000 * 60 * 5; // 5 minute of floats at 48 khz.
 constexpr auto fadeOutLength        = 1000;           // the number of samples at the end of the loop where we apply a linear fade out
 bool           isFirstLoop          = true;           // the first loop will set the length for the buffer
 bool           isCurrentlyRecording = false;

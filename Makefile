@@ -12,6 +12,9 @@ CPP_SOURCES = source/PetalPod.cpp
 # See: https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
 # OPT = -O0
 
+APP_TYPE = BOOT_SRAM
+LDSCRIPT = STM32H750IB_sram_petalPod.lds
+
 # Library Locations
 LIBDAISY_DIR = submodules/libDaisy
 DAISYSP_DIR = submodules/DaisySP
