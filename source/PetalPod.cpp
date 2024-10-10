@@ -18,7 +18,8 @@ bool           isCurrentlyRecording = false;
 bool           isCurrentlyPlaying   = false;
 bool           couldBeReset         = false;
 
-float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
+//DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
+float DSY_SDRAM_BSS looperBuffer[maxRecordingSize];
 int                 positionInLooperBuffer = 0;
 int                 cappedRecordingSize    = maxRecordingSize;
 int                 numRecordedSamples     = 0;

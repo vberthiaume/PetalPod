@@ -3,11 +3,10 @@
 #include "daisy_pod.h"
 
 //TODO: have the implementation in a cpp file and remove inline to see if that reduces code size, I'm sure it does
-inline void PrintFloat (daisy::DaisySeed& seed, const char *text, float value, int decimalPlaces)
+inline void PrintFloat (daisy::DaisySeed& seed, daisy::FixedCapStr<16> str, float value, int decimalPlaces)
 {
-    const auto wholeValue{static_cast<int> (value)};
-    const auto fractionalValue{static_cast<int> (static_cast<float> (std::pow (10, decimalPlaces)) * (value - static_cast<float> (wholeValue)))};
-    seed.PrintLine ("%s: %d.%d", text, wholeValue, fractionalValue);
+    str.AppendFloat (value, decimalPlaces);
+    seed.PrintLine (str);
 }
 
 inline void PrintFloat (daisy::DaisySeed& seed, float value)
