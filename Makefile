@@ -8,7 +8,7 @@ USE_FATFS = 1
 CPP_SOURCES = source/PetalPod.cpp
 
 # optimization level. O0 is nothing, so use this for debug.
-# Os is optimize for space, -O1 to -O3 optimize level 1 to 3.
+# -Os is optimize for space, -O1 to -O3 optimize level 1 to 3.
 # See: https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
 # OPT = -O0
 
