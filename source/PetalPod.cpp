@@ -1,7 +1,7 @@
 #define WAIT_FOR_SERIAL_MONITOR 0
 #define ENABLE_INPUT_DETECTION 1
 #define ENABLE_ALL_EFFECTS 1
-#define ENABLE_REVERB 0
+#define ENABLE_REVERB 1
 #define ENABLE_FILE_SAVING 1
 
 #include "daisysp.h"
@@ -46,7 +46,7 @@ enum fxMode
 };
 
 #if ENABLE_REVERB
-daisysp::ReverbSc                                     reverbSC;
+daisysp::ReverbSc DSY_SDRAM_BSS                       reverbSC;
 #endif
 daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS leftDelay;
 daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS rightDelay;
