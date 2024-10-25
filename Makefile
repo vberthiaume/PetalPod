@@ -13,6 +13,8 @@ CPP_SOURCES = source/PetalPod.cpp
 # OPT = -O0
 
 APP_TYPE = BOOT_SRAM
+# using the linker script is actually optional at this point, but might as well have it in
+# it moves some stuff from DTCMRAM to SRAM
 LDSCRIPT = STM32H750IB_sram_petalPod.lds
 
 # Library Locations
