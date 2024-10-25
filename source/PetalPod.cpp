@@ -1,24 +1,30 @@
+#define WAIT_FOR_SERIAL_MONITOR 0
+#define ENABLE_INPUT_DETECTION 1
+#define ENABLE_ALL_EFFECTS 1
+#define ENABLE_REVERB 1
+#define ENABLE_FILE_SAVING 1
+
 #include "daisysp.h"
 #include "helper.hpp"
+
+#if ENABLE_FILE_SAVING
 #include "fatfs.h"
+#endif
 
 #include <atomic>
 
 daisy::DaisyPod pod;
 
-#define WAIT_FOR_SERIAL_MONITOR 0
-#define ENABLE_INPUT_DETECTION 1
-#define ENABLE_ALL_EFFECTS 1
-
 //looper things
-constexpr auto maxRecordingSize     = 48000 * 60 * 1; // 1 minute of floats at 48 khz.
+constexpr auto maxRecordingSize     = 48000 * 60 * 5; // 5 minute of floats at 48 khz.
 constexpr auto fadeOutLength        = 1000;           // the number of samples at the end of the loop where we apply a linear fade out
 bool           isFirstLoop          = true;           // the first loop will set the length for the buffer
 bool           isCurrentlyRecording = false;
 bool           isCurrentlyPlaying   = false;
 bool           couldBeReset         = false;
 
-float DSY_SDRAM_BSS looperBuffer[maxRecordingSize]; //DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
+//DSY_SDRAM_BSS means this buffer will live in SDRAM, see https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
+float DSY_SDRAM_BSS looperBuffer[maxRecordingSize];
 int                 positionInLooperBuffer = 0;
 int                 cappedRecordingSize    = maxRecordingSize;
 int                 numRecordedSamples     = 0;
@@ -29,18 +35,24 @@ constexpr size_t maxDelayTime{static_cast<size_t> (48000 * 2.5f)}; // Set max de
 
 enum fxMode
 {
+#if ENABLE_REVERB
     reverb = 0,
     delay,
+#else
+    delay = 0,
+#endif
     crush,
     total
 };
 
-daisysp::ReverbSc                                     reverbSC;
+#if ENABLE_REVERB
+daisysp::ReverbSc DSY_SDRAM_BSS                       reverbSC;
+#endif
 daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS leftDelay;
 daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS rightDelay;
 daisysp::Tone                                         tone;
 daisy::Parameter                                      delayTime, cutoffParam, crushrate;
-int                                                   curFxMode = fxMode::reverb;
+int                                                   curFxMode = fxMode::delay;
 
 float currentDelay, feedback, delayTarget, cutoff;
 int   crushmod, crushcount;
@@ -56,12 +68,14 @@ constexpr auto inputDetectionThreshold = .025f;
 #endif
 
 //file saving
+#if ENABLE_FILE_SAVING
 std::atomic<bool>     needToSave { false };
 std::atomic<bool>     needToDelete { false };
 daisy::SdmmcHandler   sdmmc;
 daisy::FatFSInterface fsi;
 constexpr const char *loopFileName { "loop.wav" };
 FIL                   loopFile;
+#endif
 
 void ResetLooperState()
 {
@@ -83,12 +97,14 @@ void ResetLooperState()
 }
 
 #if ENABLE_ALL_EFFECTS
+#if ENABLE_REVERB
 void GetReverbSample (float &outl, float &outr, float inl, float inr)
 {
     reverbSC.Process (inl, inr, &outl, &outr);
     outl = drywet * outl + (1 - drywet) * inl;
     outr = drywet * outr + (1 - drywet) * inr;
 }
+#endif
 
 void GetDelaySample (float &outl, float &outr, float inl, float inr)
 {
@@ -176,7 +192,9 @@ void UpdateButtons()
                 {
                     StopRecording();
                     FadeOutLooperBuffer();
+#if ENABLE_FILE_SAVING
                     needToSave.store (true);    //trigger a save in the main loop, you can't do file operations in the audio thread
+#endif
                 }
             }
         }
@@ -191,7 +209,9 @@ void UpdateButtons()
     if (pod.button1.TimeHeldMs() >= 1000 && couldBeReset)
     {
         ResetLooperState();
+#if ENABLE_FILE_SAVING
         needToDelete.store (true);
+#endif
         couldBeReset = false;
     }
 }
@@ -205,10 +225,12 @@ void UpdateEffectKnobs (float &k1, float &k2)
 
     switch (curFxMode)
     {
+#if ENABLE_REVERB
         case fxMode::reverb:
             drywet = k1;
             reverbSC.SetFeedback (k2);
             break;
+#endif
         case fxMode::delay:
             delayTarget = delayTime.Process();
             feedback    = k2;
@@ -351,7 +373,9 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
         {
             case fxMode::delay: GetDelaySample (outputLeft, outputRight, inputLeft, inputRight); break;
             case fxMode::crush: GetCrushSample (outputLeft, outputRight, inputLeft, inputRight); break;
+#if ENABLE_REVERB
             case fxMode::reverb: GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
+#endif
             default: outputLeft = outputRight = 0;
         }
 
@@ -364,6 +388,7 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
     }
 }
 
+#if ENABLE_FILE_SAVING
 void RestoreLoopIfItExists()
 {
     // Initialize the SDMMC Hardware. For this example we'll use: Medium (25MHz), 4-bit, w/out power save settings
@@ -434,7 +459,7 @@ void saveLoop()
         f_close (&loopFile);
     }
 }
-
+#endif
 int main (void)
 {
     //initialize pod hardware and logger
@@ -446,12 +471,16 @@ int main (void)
     pod.seed.StartLog ();
 #endif
 
+#if ENABLE_FILE_SAVING
     RestoreLoopIfItExists();
+#endif
 
 #if ENABLE_ALL_EFFECTS
     //init everything related to effects
     float sample_rate = pod.AudioSampleRate();
+#if ENABLE_REVERB
     reverbSC.Init (sample_rate);
+#endif
     leftDelay.Init();
     rightDelay.Init();
     tone.Init (sample_rate);
@@ -461,9 +490,11 @@ int main (void)
     cutoffParam.Init (pod.knob1, 500, 20000, cutoffParam.LOGARITHMIC);
     crushrate.Init (pod.knob2, 1, 50, crushrate.LOGARITHMIC);
 
+#if ENABLE_REVERB
     //reverb parameters
     reverbSC.SetLpFreq (18000.0f);
     reverbSC.SetFeedback (0.85f);
+    #endif
 
     //delay parameters
     currentDelay = delayTarget = sample_rate * 0.75f;
@@ -481,6 +512,7 @@ int main (void)
         pod.seed.SetLed (led_state);
         led_state = ! led_state;
 
+#if ENABLE_FILE_SAVING
         if (needToSave.load())
         {
             saveLoop();
@@ -492,6 +524,7 @@ int main (void)
             f_unlink (loopFileName);
             needToDelete.store (false);
         }
+#endif
 
         // PrintFloat (pod.seed, "dry wet", drywet, 3);
 
