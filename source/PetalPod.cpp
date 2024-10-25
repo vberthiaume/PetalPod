@@ -1,7 +1,6 @@
 #define WAIT_FOR_SERIAL_MONITOR 0
 #define ENABLE_INPUT_DETECTION 1
 #define ENABLE_ALL_EFFECTS 1
-#define ENABLE_REVERB 1
 #define ENABLE_FILE_SAVING 1
 
 #include "daisysp.h"
@@ -35,19 +34,13 @@ constexpr size_t maxDelayTime{static_cast<size_t> (48000 * 2.5f)}; // Set max de
 
 enum fxMode
 {
-#if ENABLE_REVERB
     reverb = 0,
     delay,
-#else
-    delay = 0,
-#endif
     crush,
     total
 };
 
-#if ENABLE_REVERB
 daisysp::ReverbSc DSY_SDRAM_BSS                       reverbSC;
-#endif
 daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS leftDelay;
 daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS rightDelay;
 daisysp::Tone                                         tone;
@@ -60,8 +53,7 @@ int   crushmod, crushcount;
 float crushsl, crushsr, drywet = 1.f;
 
 #if ENABLE_INPUT_DETECTION
-//input detection
-bool           isWaitingForInput    = false;
+bool           isWaitingForInput       = false;
 bool           gotPreviousSample       = false;
 float          previousSample          = -1000.f;
 constexpr auto inputDetectionThreshold = .025f;
@@ -97,14 +89,12 @@ void ResetLooperState()
 }
 
 #if ENABLE_ALL_EFFECTS
-#if ENABLE_REVERB
 void GetReverbSample (float &outl, float &outr, float inl, float inr)
 {
     reverbSC.Process (inl, inr, &outl, &outr);
     outl = drywet * outl + (1 - drywet) * inl;
     outr = drywet * outr + (1 - drywet) * inr;
 }
-#endif
 
 void GetDelaySample (float &outl, float &outr, float inl, float inr)
 {
@@ -225,12 +215,10 @@ void UpdateEffectKnobs (float &k1, float &k2)
 
     switch (curFxMode)
     {
-#if ENABLE_REVERB
         case fxMode::reverb:
             drywet = k1;
             reverbSC.SetFeedback (k2);
             break;
-#endif
         case fxMode::delay:
             delayTarget = delayTime.Process();
             feedback    = k2;
@@ -373,9 +361,7 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
         {
             case fxMode::delay: GetDelaySample (outputLeft, outputRight, inputLeft, inputRight); break;
             case fxMode::crush: GetCrushSample (outputLeft, outputRight, inputLeft, inputRight); break;
-#if ENABLE_REVERB
             case fxMode::reverb: GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
-#endif
             default: outputLeft = outputRight = 0;
         }
 
@@ -478,9 +464,7 @@ int main (void)
 #if ENABLE_ALL_EFFECTS
     //init everything related to effects
     float sample_rate = pod.AudioSampleRate();
-#if ENABLE_REVERB
     reverbSC.Init (sample_rate);
-#endif
     leftDelay.Init();
     rightDelay.Init();
     tone.Init (sample_rate);
@@ -490,7 +474,6 @@ int main (void)
     cutoffParam.Init (pod.knob1, 500, 20000, cutoffParam.LOGARITHMIC);
     crushrate.Init (pod.knob2, 1, 50, crushrate.LOGARITHMIC);
 
-#if ENABLE_REVERB
     //reverb parameters
     reverbSC.SetLpFreq (18000.0f);
     reverbSC.SetFeedback (0.85f);
@@ -500,7 +483,7 @@ int main (void)
     currentDelay = delayTarget = sample_rate * 0.75f;
     leftDelay.SetDelay (currentDelay);
     rightDelay.SetDelay (currentDelay);
-#endif
+
     //start audio
     pod.StartAdc();
     pod.StartAudio (AudioCallback);
