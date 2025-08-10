@@ -38,7 +38,6 @@ Effects effects;
 float crushsl, crushsr, drywet = 1.f;
 #endif
 
-
 #if ENABLE_INPUT_DETECTION
 bool           isWaitingForInput       = false;
 bool           gotPreviousSample       = false;
@@ -63,8 +62,8 @@ void ResetLooperState()
     isCurrentlyPlaying   = false;
 
 #if ENABLE_INPUT_DETECTION
-    isWaitingForInput    = false;
-    gotPreviousSample    = false;
+    isWaitingForInput = false;
+    gotPreviousSample = false;
 #endif
     positionInLooperBuffer = 0;
     numRecordedSamples     = 0;
@@ -82,8 +81,7 @@ void FadeOutLooperBuffer()
     for (int i = cappedRecordingSize; i > cappedRecordingSize - actualFadeOut; --i)
     {
         //map i values to a ramp that goes from 0 to 1
-        const auto ramp = jmap (static_cast<float> (i), static_cast<float> (cappedRecordingSize),
-                                static_cast<float> (cappedRecordingSize - actualFadeOut), 0.f, 1.f);
+        const auto ramp = jmap (static_cast<float> (i), static_cast<float> (cappedRecordingSize), static_cast<float> (cappedRecordingSize - actualFadeOut), 0.f, 1.f);
 
         //ramp out looper buffer
         looperBuffer[i] *= ramp;
@@ -133,7 +131,7 @@ void UpdateButtons()
                     StopRecording();
                     FadeOutLooperBuffer();
 #if ENABLE_FILE_SAVING
-                    needToSave.store (true);    //trigger a save in the main loop, you can't do file operations in the audio thread
+                    needToSave.store (true); //trigger a save in the main loop, you can't do file operations in the audio thread
 #endif
                 }
             }
@@ -236,7 +234,7 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
 #if ENABLE_INPUT_DETECTION
     if (! gotPreviousSample && numSamples > 0)
     {
-        previousSample = inputBuffer[0];
+        previousSample    = inputBuffer[0];
         gotPreviousSample = true;
     }
 #endif
@@ -262,7 +260,7 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
         outputBuffer[curSample] = outputBuffer[curSample + 1] = looperOutput;
 
         //apply effects
-        inputLeft = outputBuffer[curSample];
+        inputLeft  = outputBuffer[curSample];
         inputRight = outputBuffer[curSample + 1];
 
 #if ENABLE_ALL_EFFECTS
@@ -289,13 +287,13 @@ void RestoreLoopIfItExists()
     // Initialize the SDMMC Hardware. For this example we'll use: Medium (25MHz), 4-bit, w/out power save settings
     daisy::SdmmcHandler::Config sd_cfg;
     sd_cfg.speed = daisy::SdmmcHandler::Speed::STANDARD;
-    sdmmc.Init(sd_cfg);
+    sdmmc.Init (sd_cfg);
 
     // Setup our interface to the FatFS middleware
     daisy::FatFSInterface::Config fsi_config;
     fsi_config.media = daisy::FatFSInterface::Config::MEDIA_SD;
-    fsi.Init(fsi_config);
-    FATFS& fs = fsi.GetSDFileSystem();
+    fsi.Init (fsi_config);
+    FATFS &fs = fsi.GetSDFileSystem();
 
     // mount the filesystem to the root directory, and attempt to open the loop file
     bool loopWasLoaded = false;
@@ -304,7 +302,7 @@ void RestoreLoopIfItExists()
         if (f_open (&loopFile, loopFileName, FA_READ) == FR_OK)
         {
             //attempt to read up to the maxRecordingSize, but the actual bytes_read will tell us the length of the loop
-            UINT bytes_read;
+            UINT       bytes_read;
             const auto res = f_read (&loopFile, looperBuffer, maxRecordingSize, &bytes_read);
             if (res == FR_OK)
             {
@@ -339,7 +337,7 @@ void saveLoop()
         {
             //everything opened fine, so write the stuff
             const auto bytesToWrite { cappedRecordingSize * sizeof (float) };
-            UINT bytes_written;
+            UINT       bytes_written;
             res = f_write (&loopFile, looperBuffer, bytesToWrite, &bytes_written);
 
             //and make sure it got written correctly
@@ -363,7 +361,7 @@ int main (void)
 #if WAIT_FOR_SERIAL_MONITOR
     pod.seed.StartLog (true);
 #else
-    pod.seed.StartLog ();
+    pod.seed.StartLog();
 #endif
 
 #if ENABLE_FILE_SAVING
@@ -371,7 +369,7 @@ int main (void)
 #endif
 
 #if ENABLE_ALL_EFFECTS
-    effects.initEffects(pod);
+    effects.initEffects (pod);
 #endif
 
     //start audio
