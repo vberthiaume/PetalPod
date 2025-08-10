@@ -4,6 +4,9 @@
 #define ENABLE_FILE_SAVING 1
 
 #include "daisysp.h"
+#if ENABLE_ALL_EFFECTS
+#include "effects.hpp"
+#endif
 #include "helper.hpp"
 
 #if ENABLE_FILE_SAVING
@@ -28,29 +31,13 @@ int                 positionInLooperBuffer = 0;
 int                 cappedRecordingSize    = maxRecordingSize;
 int                 numRecordedSamples     = 0;
 
-//effect things
+//TODO: get rid of this lol
 #if ENABLE_ALL_EFFECTS
-constexpr size_t maxDelayTime{static_cast<size_t> (48000 * 2.5f)}; // Set max delay time to 0.75 of samplerate.
-
-enum fxMode
-{
-    reverb = 0,
-    delay,
-    crush,
-    total
-};
-
-daisysp::ReverbSc DSY_SDRAM_BSS                       reverbSC;
-daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS leftDelay;
-daisysp::DelayLine<float, maxDelayTime> DSY_SDRAM_BSS rightDelay;
-daisysp::Tone                                         tone;
-daisy::Parameter                                      delayTime, cutoffParam, crushrate;
-int                                                   curFxMode = fxMode::delay;
-
-float currentDelay, feedback, delayTarget, cutoff;
-int   crushmod, crushcount;
-#endif
+Effects effects;
+#else
 float crushsl, crushsr, drywet = 1.f;
+#endif
+
 
 #if ENABLE_INPUT_DETECTION
 bool           isWaitingForInput       = false;
@@ -87,43 +74,6 @@ void ResetLooperState()
 
     cappedRecordingSize = maxRecordingSize;
 }
-
-#if ENABLE_ALL_EFFECTS
-void GetReverbSample (float &outl, float &outr, float inl, float inr)
-{
-    reverbSC.Process (inl, inr, &outl, &outr);
-    outl = drywet * outl + (1 - drywet) * inl;
-    outr = drywet * outr + (1 - drywet) * inr;
-}
-
-void GetDelaySample (float &outl, float &outr, float inl, float inr)
-{
-    daisysp::fonepole (currentDelay, delayTarget, .00007f);
-    rightDelay.SetDelay (currentDelay);
-    leftDelay.SetDelay (currentDelay);
-    outl = leftDelay.Read();
-    outr = rightDelay.Read();
-
-    leftDelay.Write ((feedback * outl) + inl);
-    outl = (feedback * outl) + ((1.0f - feedback) * inl);
-
-    rightDelay.Write ((feedback * outr) + inr);
-    outr = (feedback * outr) + ((1.0f - feedback) * inr);
-}
-
-void GetCrushSample (float &outl, float &outr, float inl, float inr)
-{
-    crushcount++;
-    crushcount %= crushmod;
-    if (crushcount == 0)
-    {
-        crushsr = inr;
-        crushsl = inl;
-    }
-    outl = tone.Process (crushsl);
-    outr = tone.Process (crushsr);
-}
-#endif
 
 void FadeOutLooperBuffer()
 {
@@ -206,40 +156,6 @@ void UpdateButtons()
     }
 }
 
-#if ENABLE_ALL_EFFECTS
-void UpdateEffectKnobs (float &k1, float &k2)
-{
-    drywet = pod.knob1.Process();
-    k1 = drywet;
-    k2 = pod.knob2.Process();
-
-    switch (curFxMode)
-    {
-        case fxMode::reverb:
-            drywet = k1;
-            reverbSC.SetFeedback (k2);
-            break;
-        case fxMode::delay:
-            delayTarget = delayTime.Process();
-            feedback    = k2;
-            break;
-        case fxMode::crush:
-            cutoff = cutoffParam.Process();
-            tone.SetFreq (cutoff);
-            crushmod = (int) crushrate.Process();
-    }
-}
-
-void UpdateEncoder()
-{
-    //rotating the encoder changes the effects
-    curFxMode = curFxMode + pod.encoder.Increment();
-    curFxMode = (curFxMode % fxMode::total + fxMode::total) % fxMode::total;
-
-    //TODO: pushing the encoder should do something
-    // if (pod.encoder.RisingEdge())
-}
-#endif
 void UpdateLeds (float k1, float k2)
 {
     //led1 is red when recording, green when playing, off otherwise
@@ -256,7 +172,7 @@ void UpdateLeds (float k1, float k2)
 
 #if ENABLE_ALL_EFFECTS
     //led 2 reflects the effect parameter
-    pod.led2.Set (k2 * (curFxMode == 2), k2 * (curFxMode == 1), k2 * (curFxMode == 0 || curFxMode == 2));
+    pod.led2.Set (k2 * (effects.curFxMode == 2), k2 * (effects.curFxMode == 1), k2 * (effects.curFxMode == 0 || effects.curFxMode == 2));
 #endif
     pod.UpdateLeds();
 }
@@ -264,19 +180,12 @@ void UpdateLeds (float k1, float k2)
 void ProcessControls()
 {
     float k1, k2;
-#if ENABLE_ALL_EFFECTS
-    delayTarget = 0;
-    feedback = 0;
-    drywet = 0;
-#endif
-
     pod.ProcessAnalogControls();
     pod.ProcessDigitalControls();
 
     UpdateButtons();
 #if ENABLE_ALL_EFFECTS
-    UpdateEffectKnobs (k1, k2);
-    UpdateEncoder();
+    effects.ProcessEffectsControls (pod, k1, k2);
 #endif
     UpdateLeds (k1, k2);
 }
@@ -285,7 +194,7 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 {
     //this should basically only happen when we start and we don't have anything recorded
     if (! isCurrentlyRecording && ! isCurrentlyPlaying)
-        return in[i] * (.968f - drywet);
+        return in[i] * (.968f - effects.drywet);
 
     if (isCurrentlyRecording)
     {
@@ -315,7 +224,7 @@ float GetLooperSample (daisy::AudioHandle::InterleavingInputBuffer in, size_t i)
 
     //this was to use knob 1 as a dry/wet for the in/out for the looper. Keeping in case it's useful later
     if (! isCurrentlyRecording)
-        outputSample = outputSample * drywet + in[i] * (.968f - drywet); //slider apparently only goes to .968f lol
+        outputSample = outputSample * effects.drywet + in[i] * (.968f - effects.drywet); //slider apparently only goes to .968f lol
 
     return outputSample;
 }
@@ -357,11 +266,11 @@ void AudioCallback (daisy::AudioHandle::InterleavingInputBuffer  inputBuffer,
         inputRight = outputBuffer[curSample + 1];
 
 #if ENABLE_ALL_EFFECTS
-        switch (curFxMode)
+        switch (effects.curFxMode)
         {
-            case fxMode::delay: GetDelaySample (outputLeft, outputRight, inputLeft, inputRight); break;
-            case fxMode::crush: GetCrushSample (outputLeft, outputRight, inputLeft, inputRight); break;
-            case fxMode::reverb: GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
+            case fxMode::delay: effects.GetDelaySample (outputLeft, outputRight, inputLeft, inputRight); break;
+            case fxMode::crush: effects.GetCrushSample (outputLeft, outputRight, inputLeft, inputRight); break;
+            case fxMode::reverb: effects.GetReverbSample (outputLeft, outputRight, inputLeft, inputRight); break;
             default: outputLeft = outputRight = 0;
         }
 
@@ -462,27 +371,8 @@ int main (void)
 #endif
 
 #if ENABLE_ALL_EFFECTS
-    //init everything related to effects
-    float sample_rate = pod.AudioSampleRate();
-    reverbSC.Init (sample_rate);
-    leftDelay.Init();
-    rightDelay.Init();
-    tone.Init (sample_rate);
-
-    //init parameters
-    delayTime.Init (pod.knob1, sample_rate * .05, maxDelayTime, delayTime.LOGARITHMIC);
-    cutoffParam.Init (pod.knob1, 500, 20000, cutoffParam.LOGARITHMIC);
-    crushrate.Init (pod.knob2, 1, 50, crushrate.LOGARITHMIC);
-
-    //reverb parameters
-    reverbSC.SetLpFreq (18000.0f);
-    reverbSC.SetFeedback (0.85f);
-    #endif
-
-    //delay parameters
-    currentDelay = delayTarget = sample_rate * 0.75f;
-    leftDelay.SetDelay (currentDelay);
-    rightDelay.SetDelay (currentDelay);
+    effects.initEffects(pod);
+#endif
 
     //start audio
     pod.StartAdc();

@@ -5,7 +5,7 @@ USE_DAISYSP_LGPL = 1
 USE_FATFS = 1
 
 # Sources
-CPP_SOURCES = source/PetalPod.cpp
+CPP_SOURCES = source/main.cpp source/effects.cpp 
 
 # optimization level. O0 is nothing, so use this for debug.
 # -Os is optimize for space, -O1 to -O3 optimize level 1 to 3.
